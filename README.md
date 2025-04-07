@@ -95,7 +95,6 @@ est_corrected = fit$cof[1]
 sd = fit$sd
 
 ```
-A CRAN release is coming soon.
 
 A CRAN release is coming soon.
 
