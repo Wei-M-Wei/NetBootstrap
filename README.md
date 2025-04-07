@@ -99,4 +99,4 @@ sd = fit$sd
 A CRAN release is coming soon.
 
 ## Reference
-[^1]: Haoyaun, X., Wei, M., Dhaene, G., Behyum, J. Parametric bootstrap inference in network formation models. 
+[^1]: Haoyaun, X., Wei, M., Dhaene, G., Beyhum, J. Parametric bootstrap inference in network formation models. 
