@@ -46,7 +46,6 @@ Z = array(0, dim = c(N, N, K))
 Y = matrix(0, nrow = N, ncol = N)
 for (t in seq(N)) {
   for (i in seq(N)) {
-    v_it = rnorm(1, 0, 1 / sqrt(2))
     epsi_it = rnorm(1, 0, 1)
     if ( t %% 2 == 0 & i %% 2 == 0){
       Z[i, t, ] = (1 - 2 * 1*(0)) * (1 - 2 * 1*(0))
