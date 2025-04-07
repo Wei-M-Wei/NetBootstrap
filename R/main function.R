@@ -1,7 +1,7 @@
 #' Parametric bootstrap inference in network formation models
 #'@title Parametric bootstrap inference in network formation models
 #'
-#' @description R package 'Netbootstrap' is dedicated to do parametric bootstrap inference in network formation models.
+#' @description R package 'NetBootstrap' is dedicated to do parametric bootstrap inference in network formation models.
 #'
 #' @param y outcome variabe
 #' @param X dependent variables
@@ -64,7 +64,7 @@ network_bootstrap = function(y, X, N, bootstrap_time, data, index, link = 'probi
   X_design = apply(X_design, 2, as.numeric)
   cof_boost = c()
   for (k in seq(bootstrap_time)) {
-    epsi_it = rnorm(n, 0, 1)
+    epsi_it = rnorm(length(y), 0, 1)
     Y = as.numeric(X_design %*%cof > epsi_it)
     data_boostrap <- data.frame(y = Y, X = X_design)
     model <-
