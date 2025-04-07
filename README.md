@@ -87,7 +87,7 @@ index_in = index_matrix[-drop_index,]
 # estimation procedure
 data_in = data.frame(y = y, X = X_design, index = index_in)
 index_name = colnames(data_in)[(K+2):(K+3)]
-fit = network_bootstrap(y, X = X_design, N, bootstrap_time = 10, index = c('index.1', 'index.2'), data = data_in, link = 'probit', beta_NULL = NULL)
+fit = network_bootstrap(y, X = X_design, N, bootstrap_time = 599, index = c('index.1', 'index.2'), data = data_in, link = 'probit', beta_NULL = NULL)
 
 # get the results
 est_MLE = fit$cof_MLE[1]
