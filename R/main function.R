@@ -339,6 +339,7 @@ APE_se = function(X, y, cov_APE, cov_APE_minus, cov_sum, APE_MLE, model = 'probi
   return( sqrt((part_1 + part_2 + part_3)/(N^2*(N-1)^2)) )
 }
 
+#' @export
 compute_sum <- function(X) {
   N <- nrow(X)
   col_sums <- colSums(X)  # Compute sum over each column
@@ -349,6 +350,7 @@ compute_sum <- function(X) {
   return(sum(term1) - term2)
 }
 
+#' @export
 shift_lower_triangle_and_add_zero_diag <- function(A) {
   N_minus_1 <- nrow(A)
   N <- ncol(A)
