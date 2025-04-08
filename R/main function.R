@@ -248,13 +248,13 @@ network_bootstrap = function(y, X, N, bootstrap_time, index, data, link = 'probi
 
 #' @export
 #'
-APE_se = function(fit, N, X, y, APE, model = 'probit'){
+APE_se = function(fit, est, N, X, y, APE, model = 'probit'){
 
 
-  cov_sum_1 = fit$X_origin[,1] * fit$cof_MLE[1]
-  cov_sum_2 = fit$X_origin[,-1] %*% fit$cof_MLE[-1]
-  cov_APE = matrix(fit$cof_MLE[1] + fit$X_origin[,-1] %*% fit$cof_MLE[-1], N-1, N)
-  cov_APE_minus = matrix(-fit$cof_MLE[1] + fit$X_origin[,-1] %*% fit$cof_MLE[-1], N-1, N)
+  cov_sum_1 = fit$X_origin[,1] * est[1]
+  cov_sum_2 = fit$X_origin[,-1] %*% est[-1]
+  cov_APE = matrix(est[1] + fit$X_origin[,-1] %*% est[-1], N-1, N)
+  cov_APE_minus = matrix(-est[1] + fit$X_origin[,-1] %*% est[-1], N-1, N)
   cov_sum = matrix(cov_sum_1 + cov_sum_2, N-1, N)
 
   cov_APE = shift_lower_triangle_and_add_zero_diag(cov_APE)
