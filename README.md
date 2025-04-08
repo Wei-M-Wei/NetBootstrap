@@ -115,6 +115,9 @@ source('simulation data.R')
 #generate the simulated data
 N = 30
 K = 1
+
+# a specific design for the simulation data, see our paper for more details
+design = 1
 beta = c(1)
 
 # prepare the data
