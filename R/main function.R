@@ -204,7 +204,7 @@ network_bootstrap = function(y, X, N, bootstrap_time, index, data, link = 'probi
     data_2 = data_boostrap
     if(is.null(beta_NULL) != 1){
       formula <- as.formula( paste("y ~ -1 +", paste(colnames(data_2[,-2])[-1], collapse = " + "), "+ offset(offset_term)"))
-      data_2$offset_term <- beta_boot * X_design[,1]
+      data_2$offset_term <- cof[1] * X_design[,1]
       model_B_NULL <-
         speedglm(formula = formula, data = data_2, family=binomial(link = link))
       fit_B_NULL = summary(model_B_NULL)
