@@ -14,7 +14,8 @@
 #'
 #' @returns A list of fitted results is returned.
 #' Within this outputted list, the following elements can be found:
-#'     \item{cof}{estimated coefficients corrected by the mean of the bootstrap estimates.}
+#'     \item{cof_mean}{estimated coefficients corrected by the mean of the bootstrap estimates.}
+#'     \item{cof_median}{estimated coefficients corrected by the median of the bootstrap estimates.}
 #'     \item{sd}{stand deviation form the bootstrap procedure.}
 #'     \item{cof_MLE}{estimated coefficients from Maximum Likelihood Estimates (MLE).}
 #'     \item{cof_bootstrap_all}{all bootstrap estimates.}
@@ -215,8 +216,11 @@ network_bootstrap = function(y, X, N, bootstrap_time, index, data, link = 'probi
   # get the final results
   cof_B[,K+1] = sum(cof_B[,(N+K+1):(N+N+K)]) - sum(cof_B[,(K+2):(N+K)])
   cof_boost_mean = apply(cof_B, 2, mean)
-  est_correct = cof - (cof_boost_mean - cof)
-  est_correct[K+1] = sum(est_correct[(N+K+1):(N+N+K)]) - sum(est_correct[(K+2):(N+K)])
+  cof_boost_median = apply(cof_B, 2, median)
+  est_correct_mean = cof - (cof_boost_mean - cof)
+  est_correct_median = cof - (cof_boost_median - cof)
+  est_correct_mean[K+1] = sum(est_correct_mean[(N+K+1):(N+N+K)]) - sum(est_correct_mean[(K+2):(N+K)])
+  est_correct_median[K+1] = sum(est_correct_median[(N+K+1):(N+N+K)]) - sum(est_correct_median[(K+2):(N+K)])
   if (K == 1){
     boostrap_sd = sd(cof_B[,1:K])
   }
@@ -226,7 +230,7 @@ network_bootstrap = function(y, X, N, bootstrap_time, index, data, link = 'probi
 
 
   if(is.null(beta_NULL) != 1){
-    res = list(cof_MLE = cof, cof = est_correct,  sd = boostrap_sd,
+    res = list(cof_MLE = cof, cof_mean = est_correct_mean, cof_median = est_correct_median, sd = boostrap_sd,
                cof_bootstrap_all = cof_B, cof_MLE_NULL = cof_NULL, cof_bootstrap_NULL = cof_B_NULL,
                log_likelihood_MLE = log_likelihood_estimate, log_likelihood_Bootstrap = log_likelihood_estimate_B,
                log_likelihood_MLE_NULL = log_likelihood_estimate_NULL, log_likelihood_Bootstrap_NULL = log_likelihood_estimate_B_NULL,
@@ -234,7 +238,7 @@ network_bootstrap = function(y, X, N, bootstrap_time, index, data, link = 'probi
     )
   }
   else{
-    res = list(cof_MLE = cof, cof = est_correct, sd = boostrap_sd, cof_bootstrap_all = cof_B,
+    res = list(cof_MLE = cof, cof_mean = est_correct_mean, cof_median = est_correct_median, sd = boostrap_sd, cof_bootstrap_all = cof_B,
                log_likelihood_MLE = log_likelihood_estimate, log_likelihood_Bootstrap = log_likelihood_estimate_B,
                Hessian_MLE = Hessian_inv, X_origin = as.matrix(X_design)
     )
