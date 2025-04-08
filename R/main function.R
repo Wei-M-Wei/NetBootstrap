@@ -246,7 +246,8 @@ network_bootstrap = function(y, X, N, bootstrap_time, index, data, link = 'probi
   return(res)
 }
 
-
+#' @export
+#'
 APE_se = function(X, y, cov_APE, cov_APE_minus, cov_sum, APE_MLE, model = 'probit'){
   cov_sum[row(cov_sum) == col(cov_sum)] = 0
   cov_APE[row(cov_APE) == col(cov_APE)] = 0
