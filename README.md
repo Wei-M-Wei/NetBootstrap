@@ -19,6 +19,9 @@ library(NetBootstrap)
 - ```{r }
   help(network_bootstrap) # check an example provided
   ```
+## Additional resources
+- **Replication code**: The repository includes replication code for all simulations and empirical applications.
+- **Suggestions welcome**: Further improvements are planned, and we encourage feedback and suggestions to enhance the package.
 
 ## Example
 ```{r }
