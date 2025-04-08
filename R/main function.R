@@ -248,7 +248,19 @@ network_bootstrap = function(y, X, N, bootstrap_time, index, data, link = 'probi
 
 #' @export
 #'
-APE_se = function(X, y, cov_APE, cov_APE_minus, cov_sum, APE_MLE, model = 'probit'){
+APE_se = function(fit, N, X, y, APE, model = 'probit'){
+
+
+  cov_sum_1 = fit$X_origin[,1] * fit$cof_MLE[1]
+  cov_sum_2 = fit$X_origin[,-1] %*% fit$cof_MLE[-1]
+  cov_APE = matrix(fit$cof_MLE[1] + fit$X_origin[,-1] %*% fit$cof_MLE[-1], N-1, N)
+  cov_APE_minus = matrix(-fit$cof_MLE[1] + fit$X_origin[,-1] %*% fit$cof_MLE[-1], N-1, N)
+  cov_sum = matrix(cov_sum_1 + cov_sum_2, N-1, N)
+
+  cov_APE = shift_lower_triangle_and_add_zero_diag(cov_APE)
+  cov_APE_minus = shift_lower_triangle_and_add_zero_diag(cov_APE_minus)
+  cov_sum = shift_lower_triangle_and_add_zero_diag(cov_sum)
+
   cov_sum[row(cov_sum) == col(cov_sum)] = 0
   cov_APE[row(cov_APE) == col(cov_APE)] = 0
   cov_APE_minus[row(cov_APE_minus) == col(cov_APE_minus)] = 0
@@ -329,7 +341,7 @@ APE_se = function(X, y, cov_APE, cov_APE_minus, cov_sum, APE_MLE, model = 'probi
 
   tau = as.numeric(D_beta_delta * solve(W_bar)) * D_beta_loss - phi * d_fix_loss
 
-  APE_residual = APE_MLE - colMeans(APE_MLE)
+  APE_residual = APE - colMeans(APE)
 
 
   part_1 = sum(APE_residual%*%APE_residual)
