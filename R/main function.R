@@ -192,7 +192,6 @@ network_bootstrap = function(y, X, N, bootstrap_time, index, data, link = 'probi
     set.seed(k)
     epsi_it = rnorm(length(y), 0, 1)
     Y = as.numeric(X_design %*% cof > epsi_it)
-    print(cof)
     data_boostrap <- data.frame(y = Y, X = X_design)
     model_B <-
       speedglm(y ~ . - 1, data = data_boostrap, family = binomial(link = link))
