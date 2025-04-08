@@ -69,5 +69,11 @@ fit = network_bootstrap(y, X = X_design, N, bootstrap_time = 10, index = c('inde
 
 # get the results
 est_MLE = fit$cof_MLE[1]
-est_corrected = fit$cof[1]
+
+# corrected by the mean of the bootstrap estimates
+est_corrected_mean = fit$cof_mean[1]
+
+# corrected by the median of the bootstrap estimates
+est_corrected_median = fit$cof_median[1]
+
 sd = fit$sd
