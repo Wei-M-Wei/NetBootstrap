@@ -109,7 +109,7 @@
 network_bootstrap = function(y, X, N, bootstrap_time, index, data, link = 'probit', beta_NULL = NULL){
 
   data = data.frame(y = y, X = X, data[,index[1]], data[,index[2]])
-
+  K = dim(X)[2]
   # order the data
   if(is.null(colnames(X)) == 1){
     colnames(data)[(dim(data)[2]-1):dim(data)[2]] = index
@@ -234,13 +234,13 @@ network_bootstrap = function(y, X, N, bootstrap_time, index, data, link = 'probi
                cof_bootstrap_all = cof_B, cof_MLE_NULL = cof_NULL, cof_bootstrap_NULL = cof_B_NULL,
                log_likelihood_MLE = log_likelihood_estimate, log_likelihood_Bootstrap = log_likelihood_estimate_B,
                log_likelihood_MLE_NULL = log_likelihood_estimate_NULL, log_likelihood_Bootstrap_NULL = log_likelihood_estimate_B_NULL,
-               Hessian_MLE = Hessian_inv, Hessian_MLE_NULL = Hessian_inv_NULL, X_origin = as.matrix(X_design)
+               Hessian_MLE = Hessian_inv, Hessian_MLE_NULL = Hessian_inv_NULL, X_origin = as.matrix(X_design), data = data
     )
   }
   else{
     res = list(cof_MLE = cof, cof_mean = est_correct_mean, cof_median = est_correct_median, sd = boostrap_sd, cof_bootstrap_all = cof_B,
                log_likelihood_MLE = log_likelihood_estimate, log_likelihood_Bootstrap = log_likelihood_estimate_B,
-               Hessian_MLE = Hessian_inv, X_origin = as.matrix(X_design)
+               Hessian_MLE = Hessian_inv, X_origin = as.matrix(X_design), data = data
     )
   }
   return(res)
