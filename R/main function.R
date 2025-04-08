@@ -150,7 +150,7 @@ network_bootstrap = function(y, X, N, bootstrap_time, index, data, link = 'probi
   # prepare teh final data
   X_design = cbind(X, fix)
   X_design = apply(X_design, 2, as.numeric)
-  data <- data.frame(y = y, X = X_design)
+  data_in <- data.frame(y = y, X = X_design)
 
   if (sum(y) <= N*N*0.01){
     return(NULL)
@@ -158,7 +158,7 @@ network_bootstrap = function(y, X, N, bootstrap_time, index, data, link = 'probi
 
   # MLE
   model <-
-    speedglm(y ~ . - 1, data = data, family = binomial(link = link))
+    speedglm(y ~ . - 1, data = data_in, family = binomial(link = link))
   fit = summary(model)
   Hessian_inv = vcov(model)
   cof = unlist(as.list(fit$coefficients[, 1]))
@@ -166,7 +166,7 @@ network_bootstrap = function(y, X, N, bootstrap_time, index, data, link = 'probi
   cof[K+1] = sum(cof[(N+K+1):(N+N+K)]) - sum(cof[(K+2):(N+K)])
 
   # constrained MLE
-  data_2 = data
+  data_2 = data_in
   if(is.null(beta_NULL) != 1){
 
     formula <- as.formula( paste("y ~ -1 +", paste(colnames(data_2[,-2])[-1], collapse = " + "), "+ offset(offset_term)"))
