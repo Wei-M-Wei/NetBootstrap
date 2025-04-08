@@ -194,7 +194,7 @@ network_bootstrap = function(y, X, N, bootstrap_time, index, data, link = 'probi
     Y = as.numeric(X_design %*% cof > epsi_it)
     data_boostrap <- data.frame(y = Y, X = X_design)
     model_B <-
-      speedglm(y ~ . - 1, data = data_boostrap, family = binomial(link = link))
+      speedglm(y ~ . - 1, data = data_boostrap, family = binomial(link = link), start = cof)
     fit_B = summary(model_B)
     cof_B = rbind(cof_B, unlist(as.list(fit_B$coefficients[, 1])))
     log_likelihood_estimate_B <- rbind(log_likelihood_estimate_B, logLik(model_B))
@@ -206,7 +206,7 @@ network_bootstrap = function(y, X, N, bootstrap_time, index, data, link = 'probi
       formula <- as.formula( paste("y ~ -1 +", paste(colnames(data_2[,-2])[-1], collapse = " + "), "+ offset(offset_term)"))
       data_2$offset_term <- cof[1] * X_design[,1]
       model_B_NULL <-
-        speedglm(formula = formula, data = data_2, family=binomial(link = link))
+        speedglm(formula = formula, data = data_2, family=binomial(link = link), start = cof[-1])
       fit_B_NULL = summary(model_B_NULL)
       cof_B_NULL = rbind(cof_B_NULL, c(beta_NULL, NA, unlist(as.list(fit_B_NULL$coefficients[, 1]))))
       log_likelihood_estimate_B_NULL <- rbind(log_likelihood_estimate_B_NULL, logLik(model_B_NULL))
