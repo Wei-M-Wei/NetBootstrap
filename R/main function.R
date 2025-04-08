@@ -108,12 +108,12 @@
 #'
 network_bootstrap = function(y, X, N, bootstrap_time, index, data, link = 'probit', beta_NULL = NULL){
 
-  data = data.frame(y = y, X = X,  data[,index[1]], data[,index[2]])
+  data = data.frame(y = y, X = X, data[,index[1]], data[,index[2]])
 
   # order the data
   if(is.null(colnames(X)) == 1){
     colnames(data)[(dim(data)[2]-1):dim(data)[2]] = index
-    data = data[order(data[,index[1]], data[,index[2]]),]
+    data = data[order(data[,index[2]], data[,index[1]]),]
     p = dim(X)[2]
     y = data$y
     if (p==1){
@@ -123,7 +123,7 @@ network_bootstrap = function(y, X, N, bootstrap_time, index, data, link = 'probi
     }
   }else{
     colnames(data) = c('y', colnames(X), index)
-    data = data[order(data[,index[1]], data[,index[2]]),]
+    data = data[order(data[,index[2]], data[,index[1]]),]
     p = dim(X)[2]
 
     y = data$y
@@ -192,6 +192,7 @@ network_bootstrap = function(y, X, N, bootstrap_time, index, data, link = 'probi
     set.seed(k)
     epsi_it = rnorm(length(y), 0, 1)
     Y = as.numeric(X_design %*% cof > epsi_it)
+    print(cof)
     data_boostrap <- data.frame(y = Y, X = X_design)
     model_B <-
       speedglm(y ~ . - 1, data = data_boostrap, family = binomial(link = link))
@@ -214,7 +215,7 @@ network_bootstrap = function(y, X, N, bootstrap_time, index, data, link = 'probi
   }
 
   # get the final results
-  cof_B[,K+1] = sum(cof_B[,(N+K+1):(N+N+K)]) - sum(cof_B[,(K+2):(N+K)])
+  cof_B[,K+1] = apply(cof_B[,(N+K+1):(N+N+K)],1,sum) - apply(cof_B[,(K+2):(N+K)],1,sum)
   cof_boost_mean = apply(cof_B, 2, mean)
   cof_boost_median = apply(cof_B, 2, median)
   est_correct_mean = cof - (cof_boost_mean - cof)
