@@ -19,6 +19,9 @@ library(NetBootstrap)
 - ```{r }
   help(network_bootstrap) # check an example provided
   ```
+## Additional resources
+- **Replication code**: The repository includes replication code for all simulations and empirical applications.
+- **Suggestions welcome**: Further improvements are planned, and we encourage feedback and suggestions to enhance the package.
 
 ## Example
 ```{r }
@@ -86,15 +89,56 @@ index_in = index_matrix[-drop_index,]
 # estimation procedure
 data_in = data.frame(y = y, X = X_design, index = index_in)
 index_name = colnames(data_in)[(K+2):(K+3)]
-fit = network_bootstrap(y, X = X_design, N, bootstrap_time = 599, index = c('index.1', 'index.2'), data = data_in, link = 'probit', beta_NULL = NULL)
+fit = network_bootstrap(y = y, X = X_design, N = N, bootstrap_time = 599, index = c('index.1', 'index.2'), data = data_in, link = 'probit')
 
 # get the results
 est_MLE = fit$cof_MLE[1]
-est_corrected = fit$cof[1]
+
+# corrected by the mean of the bootstrap estimates
+est_corrected_mean = fit$cof_mean[1]
+
+# corrected by the median of the bootstrap estimates
+est_corrected_median = fit$cof_median[1]
+
 sd = fit$sd
 
 ```
 
+## Another Example
+```{r }
+rm(list = ls())
+library(NetBootstrap)
+
+# This file can eb found in 'reproduce code'
+source('simulation data.R')
+
+#generate the simulated data
+N = 30
+K = 1
+
+# a specific design for the simulation data, see our paper for more details
+design = 1
+beta = c(1)
+
+# prepare the data
+DGP = data_generation(N = N, beta = beta, design = design)
+y = DGP$y
+X_design = DGP$X
+data_in = DGP$data
+index_name = colnames(data_in)[(K+2):(K+3)]
+
+# estimation
+fit = network_bootstrap(y = y, X = X_design, N = N, bootstrap_time = bootstrap_time, index = index_name, data = data_in, link = 'probit')
+
+# get the results
+est_MLE = fit$cof_MLE[1]
+
+# corrected by the mean of the bootstrap estimates
+est_corrected_mean = fit$cof_mean[1]
+
+# corrected by the median of the bootstrap estimates
+est_corrected_median = fit$cof_median[1]
+```
 A CRAN release is coming soon.
 
 ## Reference
