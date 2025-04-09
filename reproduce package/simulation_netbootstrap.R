@@ -14,7 +14,7 @@ N = 50
 N_seq = c(N)
 
 # bootstrap times
-bootstrap_time = 499
+bootstrap_time = 599
 
 # repitition times
 mle_num = 500
@@ -45,7 +45,7 @@ for(design in c(1,2,3,4)){
   K = length(beta)
 
 for (N in N_seq) {
-  result = foreach(k = 1:mle_num,  .packages = packages_to_export) %dopar% {
+  result = foreach(k = 1:mle_num, .packages = packages_to_export) %dopar% {
     set.seed(k)
     cof = NULL
     cof_j = NULL
@@ -190,11 +190,9 @@ for (N in N_seq) {
     APE_se_formula = colMeans(APE_se_formula)
     APE_sd = sd(APE_MLE)
     cov_MLE[t_index, ] = apply(cov_var_MLE, 2, mean)
-    cov_jack[t_index, ] = apply(cov_var_jack, 2, mean)
 
     # coverage rate for beta
     cover_MLE = p_cover_MLE/length(result)
-    cover_jack = p_cover_jack/length(result)
     cover_bootstrap = p_cover_bootstrap/length(result)
 
     # rejection rate for APE
@@ -213,8 +211,11 @@ hist(all_estimator[,1])
 # print out to check
 print(Estimate_bias)
 print(Estimate_deviation)
+print(sqrt(cov_var_MLE)[1])
 print(cov_MLE)
 print(APE_estimate)
+print(APE_deviation)
+print(sqrt(APE_se_formula))
 print(cover_APE)
 
 # save the table
@@ -222,10 +223,19 @@ table_name1 <- paste0('setting_', design, '_bias_estimation', ".csv")
 table_name2 <- paste0('setting_', design, '_cover_rate', ".csv")
 table_name3 <- paste0('setting_', design, '_test_power', ".csv")
 table_name4 <- paste0('setting_', design, '_cover_rate_APE', ".csv")
-write.csv(rbind( Estimate_bias, Estimate_deviation, APE_estimate, APE_deviation ) , table_name1)
+table_name5 <- paste0('setting_', design, 'all_estimator', ".csv")
+table_name6 <- paste0('setting_', design, 'all_APE', ".csv")
+table_name7 <- paste0('setting_', design, 'all_cov_var_MLE', ".csv")
+table_name8 <- paste0('setting_', design, 'all_APE_se', ".csv")
+write.csv(rbind( Estimate_bias, Estimate_deviation, APE_estimate, APE_deviation, sqrt(APE_se_formula) ) , table_name1)
 write.csv(rbind(cover_MLE, cover_bootstrap) , table_name2)
 write.csv(rbind(p_reject_ratio, p_rej_ratio_without), table_name3)
 write.csv(cover_APE, table_name4)
+write.csv(all_estimator , table_name5)
+write.csv(all_APE , table_name6)
+write.csv(cov_var_MLE, table_name7)
+write.csv(APE_se_formula, table_name8)
+
 }
 
 
