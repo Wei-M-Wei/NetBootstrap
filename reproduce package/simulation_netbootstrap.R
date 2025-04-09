@@ -114,7 +114,7 @@ for (N in N_seq) {
 
     # calculate APE
     for (i in seq(N)){
-      for ( j in seq(T)){
+      for ( j in seq(N)){
         APE_true[i, j] = pnorm(beta + alpha[i] + gamma[j]) - pnorm(-beta + alpha[i] + gamma[j])/2
         APE_MLE[i, j] = pnorm(MLE_estimate  + alpha[i] + gamma[j]) - pnorm(-MLE_estimate  + alpha[i] + gamma[j])/2
         APE_mean[i, j] = pnorm(Mean_bootstrap_estimate  + alpha[i] + gamma[j]) - pnorm(-Mean_bootstrap_estimate  + alpha[i] + gamma[j])/2
