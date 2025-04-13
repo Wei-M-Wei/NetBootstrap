@@ -28,7 +28,7 @@ library(NetBootstrap)
 rm(list = ls())
 library(NetBootstrap)
 
-#generate the simulated data
+# Generate the simulated data
 N = 30
 K = 1
 beta = 1
