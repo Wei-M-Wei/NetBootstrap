@@ -109,7 +109,7 @@ sd = fit$sd
 rm(list = ls())
 library(NetBootstrap)
 
-# This file can eb found in 'reproduce code'
+# This file can be found in 'reproduce code'
 source('simulation data.R')
 
 #generate the simulated data
