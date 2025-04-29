@@ -760,6 +760,7 @@ se_formula_corrected = function(y, X, N, data, index, est, model = 'probit'){
 
 }
 
+#' @export
 vector_to_matrix <- function(v, N, ind1, ind2) {
   # Determine matrix size
   nrow <- N
