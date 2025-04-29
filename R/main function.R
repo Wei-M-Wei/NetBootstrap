@@ -620,12 +620,12 @@ se_formula_corrected = function(y, X, N, data, index, est, model = 'probit'){
     colnames(data) = c('y', colnames(X), index)
     data = data[order(data[,index[2]], data[,index[1]]),]
     p = dim(X)[2]
-    
+
     y = data$y
     X = data[,colnames(X)]
   }
-  
-  
+
+
   # prepare the dummy variable for fixed effects
   fix_effect = matrix(0, N*N, N + N )
   for (t in seq(N)) {
@@ -642,12 +642,12 @@ se_formula_corrected = function(y, X, N, data, index, est, model = 'probit'){
     drop_index = cbind(drop_index, i + (i - 1) * N)
   }
   fix = fix_effect[-drop_index,]
-  
-  
+
+
   # prepare the design matrix with dummy variables
   X_design = cbind(X, fix)
   X_design = apply(X_design, 2, as.numeric)
-  
+
 
   # calculate the X'beta + pi, formed as a matrix
   cov_sum_1 = X_design[,1] * est[1]
@@ -655,24 +655,24 @@ se_formula_corrected = function(y, X, N, data, index, est, model = 'probit'){
   cov_sum = matrix(cov_sum_1 + cov_sum_2, N-1, N)
   cov_sum = shift_lower_triangle_and_add_zero_diag(cov_sum)
   cov_sum[row(cov_sum) == col(cov_sum)] = 0
-  
-  
+
+
   # X is a matrix of a single covariate, and the same for y
   X = vector_to_matrix(X, N, ind1 = data_in[,index[1]], ind2 = data_in[,index[2]])
   y = vector_to_matrix(y, N, ind1 = data_in[,index[1]], ind2 = data_in[,index[2]])
   y[row(y) == col(y)] = 0
-  
-  
+
+
   # CDF (Φ(Xβ)) and PDF (φ(Xβ))
-  Phi_XB <- pnorm(cov_sum)  
-  phi_XB <- dnorm(cov_sum)  
+  Phi_XB <- pnorm(cov_sum)
+  phi_XB <- dnorm(cov_sum)
   dd_F_fix = -cov_sum * phi_XB
   Phi_XB[row(Phi_XB) == col(Phi_XB)] = 0
   phi_XB[row(phi_XB) == col(phi_XB)] = 0
   Phi_XB <- pmax(Phi_XB, 1e-9)
   Phi_XB <- pmin(Phi_XB, 1 - 1e-9)
-  
-  
+
+
   # preparation for ingredients
   # d_fix_loss = y - exp(cov_sum)/( 1 + exp(cov_sum))
   d_fix_loss =  y * (phi_XB) / Phi_XB  +  (1-y)*(-phi_XB)/(1-Phi_XB) # (phi_XB * (y - Phi_XB) / (Phi_XB * (1 - Phi_XB)))
@@ -688,18 +688,21 @@ se_formula_corrected = function(y, X, N, data, index, est, model = 'probit'){
   d_beta_fix_big_loss = (1/(N-1))*(sum(d_beta_fix_loss) - sum(diag(d_beta_fix_loss)))
   d_fix_beta_big_loss = (1/(N-1))*(sum(d_beta_fix_loss) - sum(diag(d_beta_fix_loss)))
   d_fix_2_big_loss = (1/(N-1))*(sum(d_fix_2_loss) - sum(diag(d_fix_2_loss)))
-  
-  
+
+
   # Hessian matrix, based on huges's paper
   #H_a_a = diag(-rowSums(d_fix_2_loss))/sqrt(N*(N-1))
   #H_g_g = diag(-colSums(d_fix_2_loss))/sqrt(N*(N-1))
+
+  H_a_a = matrix(0, N, N)
+  H_g_g = matrix(0, N, N)
   for (i in 1:nrow(d_fix_2_loss)) {
     H_a_a[i, i] <- -(sum(d_fix_2_loss[i, ]) - d_fix_2_loss[i, i])/(N-1)  # sum of off-diagonal elements in row i
   }
   for (i in 1:nrow(d_fix_2_loss)) {
     H_g_g[i, i] <- -(sum(d_fix_2_loss[-i, i]))/(N-1) # sum of off-diagonal elements in row i
   }
-  
+
   H_a_g = -d_fix_2_loss/((N-1))
   Hessian_bar =   cbind(rbind(H_a_a, t(H_a_g)), rbind(H_a_g, H_g_g))  + c(rep(1,N), rep(-1,N)) %*% t( c(rep(1,N), rep(-1,N)) )/N
   Hessain_inverse = solve(Hessian_bar)
@@ -723,10 +726,10 @@ se_formula_corrected = function(y, X, N, data, index, est, model = 'probit'){
       the[i, j] <- temp_sum
     }
   }
-  
+
   # W_hat based on Iva ́ n2016
   W_hat =   -(1 / ((N-1)*N)) * (sum(  d_beta_beta_loss  - d_fix_2_loss * the * the  ) - sum(diag(d_beta_beta_loss  - d_fix_2_loss * the * the )) ) # -(1 / N) * (  d_beta_beta_big_loss  - d_beta_fix_big_loss * solve(d_fix_2_big_loss) * d_beta_fix_big_loss  )
-  
+
   # Omega_hat based on Iva ́ n2016
   D_beta_loss = d_beta_loss - d_fix_loss*the
   Omega_hat <- 0
@@ -739,37 +742,37 @@ se_formula_corrected = function(y, X, N, data, index, est, model = 'probit'){
   }
 
   se_version1 = sqrt(solve(W_hat) * Omega_hat * solve(W_hat)/N^2)
-  
+
   # matrix from huges
   # W_hat
   W_hat =   -(1 / N) * (  d_beta_beta_big_loss  - d_beta_fix_big_loss * solve(d_fix_2_big_loss) * d_beta_fix_big_loss  )
-  
+
   D_beta_loss = d_beta_loss - d_fix_loss*the
-  
+
   A = (D_beta_loss + t(D_beta_loss))^2
-  
+
   Omega_hat =  1/(N*(N-1))* sum(A[lower.tri(A)])
-  
+
   se_version2 = sqrt(solve(W_hat) * Omega_hat * solve(W_hat)/N^2)
-  
+
   res = list(se_1 = se_version1, se_2 = se_version2)
   return( res)
-  
+
 }
 
 vector_to_matrix <- function(v, N, ind1, ind2) {
   # Determine matrix size
   nrow <- N
   ncol <- N
-  
+
   # Initialize zero matrix
   M <- matrix(0, nrow = nrow, ncol = ncol)
-  
+
   # Assign values
   for (i in seq_along(v)) {
     M[ind1[i], ind2[i]] <- v[i]
   }
-  
+
   return(M)
 }
 
