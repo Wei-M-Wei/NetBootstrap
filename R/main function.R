@@ -658,8 +658,8 @@ se_formula_corrected = function(y, X, N, data, index, est, model = 'probit'){
 
 
   # X is a matrix of a single covariate, and the same for y
-  X = vector_to_matrix(X, N, ind1 = data_in[,index[1]], ind2 = data_in[,index[2]])
-  y = vector_to_matrix(y, N, ind1 = data_in[,index[1]], ind2 = data_in[,index[2]])
+  X = vector_to_matrix(X, N, ind1 = data[,index[1]], ind2 = data[,index[2]])
+  y = vector_to_matrix(y, N, ind1 = data[,index[1]], ind2 = data[,index[2]])
   y[row(y) == col(y)] = 0
 
 
