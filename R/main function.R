@@ -247,6 +247,154 @@ network_bootstrap = function(y, X, N, bootstrap_time, index, data, link = 'probi
 }
 
 #' @export
+split_jackknife = function(y, X, N, index, data, link = 'probit', beta_NULL = NULL){
+
+  data_j = data.frame(y = y, X = X, data[,index[1]], data[,index[2]])
+  K = dim(X)[2]
+  # order the data
+  if(is.null(colnames(X)) == 1){
+    colnames(data_j)[(dim(data_j)[2]-1):dim(data_j)[2]] = index
+    data_j = data_j[order(data_j[,index[2]], data_j[,index[1]]),]
+    p = dim(X)[2]
+    y = data_j$y
+    if (p==1){
+      X = data_j[,2]
+    }else{
+      X = data_j[,(2:p+1)]
+    }
+  }else{
+    colnames(data_j) = c('y', colnames(X), index)
+    data_j = data_j[order(data_j[,index[2]], data_j[,index[1]]),]
+    p = dim(X)[2]
+
+    y = data_j$y
+    X = data_j[,colnames(X)]
+  }
+
+  # add dummy variable
+  fix_effect = matrix(0, N*N, N + N )
+  for (t in seq(N)) {
+    for (i in seq(N)) {
+      alpha_in = rep(0, N)
+      gamma_in = rep(0, N)
+      alpha_in[i] = 1
+      gamma_in[t] = 1
+      fix_effect[i + (t - 1) * N,] = c(alpha_in - alpha_in[1], gamma_in + alpha_in[1])
+    }
+  }
+  drop_index = NULL
+  for (i in seq(N)){
+    drop_index = cbind(drop_index, i + (i - 1) * N)
+  }
+  fix = fix_effect[-drop_index,]
+  # prepare teh final data
+  X_design = cbind(X, fix)
+  X_design = apply(X_design, 2, as.numeric)
+  X_save = X_design
+  data_in <- data.frame(y = y, X = X_design)
+
+  # MLE
+  model <-
+    speedglm(y ~ . - 1, data = data_in, family = binomial(link = link))
+  fit = summary(model)
+  Hessian_inv = vcov(model)
+  cof = unlist(as.list(fit$coefficients[, 1]))
+  log_likelihood_estimate <- logLik(model)
+  cof[K+1] = sum(cof[(N+K+1):(N+N+K)]) - sum(cof[(K+2):(N+K)])
+
+
+  cof_j = NULL
+  cof_constrain_j = NULL
+  log_likelihood_j = NULL
+  log_likelihood_constrain_j = NULL
+
+
+
+  for (k in seq(N-1)){
+    data = data_j
+    index_jack = list()
+    for (i in seq(N-k)){
+      index_jack[[i]] =   c(i,i+k)
+    }
+    for (j in seq(N-k+1,N)){
+      index_jack[[j]] = c(j,j-N+k)
+    }
+
+    match_idx <- sapply(index_jack, function(pair) {
+      which(data[,index[2]] == pair[1] & data[,index[1]] == pair[2])
+    })
+
+
+    y_split = y[-match_idx]
+    X_split = as.matrix(X)[-match_idx,]
+
+    # add dummy variable
+    fix_effect = matrix(0, N*N, N + N )
+    for (t in seq(N)) {
+      for (i in seq(N)) {
+        alpha_in = rep(0, N)
+        gamma_in = rep(0, N)
+        alpha_in[i] = 1
+        gamma_in[t] = 1
+        fix_effect[i + (t - 1) * N,] = c(alpha_in - alpha_in[1], gamma_in + alpha_in[1])
+      }
+    }
+    drop_index = NULL
+    for (i in seq(N)){
+      drop_index = cbind(drop_index, i + (i - 1) * N)
+    }
+    fix = fix_effect[-drop_index,]
+
+    # prepare teh final data
+    X_design = cbind(X_split, fix[-match_idx,])
+    X_design = apply(X_design, 2, as.numeric)
+
+    data_in <- data.frame(y = y_split, X = X_design)
+
+
+    model_j <-
+      speedglm(y ~ . - 1, data = data_in, family = binomial(link = "probit"))
+    fit_j = summary(model_j)
+    Hessian_inv_1_j = vcov(model_j)
+    cof_j = rbind(cof_j, unlist(as.list(fit_j$coefficients[, 1])))
+    log_likelihood_j <- rbind( log_likelihood_j,logLik(model_j))
+
+    if(is.null(beta_NULL) != 1){
+      ## Constrainted MLE
+      data_2 <- data_in
+      formula <- as.formula( paste("y ~ -1 +", paste(colnames(data_2[,-2])[-1], collapse = " + "), "+ offset(offset_term)"))
+      data_2$offset_term <- beta_NULL * X_design[,1]
+      model_j_2 <-
+        glm(formula = formula, data = data_2, family=binomial(link = 'probit'))
+      fit_j_2 = summary(model_j_2)
+      Hessian_inv_2_constrain_j = vcov(model_j_2)
+      cof_constrain_j = rbind(cof_constrain_j, c(beta_NULL, NA, unlist(as.list(fit_j_2$coefficients[, 1]))))
+      log_likelihood_constrain_j <- rbind( log_likelihood_constrain_j  , logLik(model_j_2))
+    }
+  }
+
+  estimate_jack = (N-1)*cof - (N-2) * apply(cof_j, 2, mean)
+  estimate_jack[K+1] = sum(estimate_jack[(N+K+1):(N+N+K)]) - sum(estimate_jack[(K+2):(N+K)])
+
+
+
+  if(is.null(beta_NULL) != 1){
+    res = list(cof_jack = estimate_jack, cof_jack_NULL = cof_constrain_j,
+               log_likelihood_jack = log_likelihood_j,
+               log_likelihood_jack_NULL = log_likelihood_constrain_j,
+               Hessian_jack = Hessian_inv_1_j, Hessian_jack_NULL = Hessian_inv_2_constrain_j, X_origin = as.matrix(X_save)
+    )
+  }else{
+    res = list(cof_jack = estimate_jack,
+               log_likelihood_jack = log_likelihood_j,
+               Hessian_jack = Hessian_inv_1_j, X_origin = as.matrix(X_save)
+    )
+  }
+  return(res)
+
+}
+
+#' @export
 #'
 APE_se = function(fit, est, N, X, y, APE, model = 'probit'){
 
@@ -350,6 +498,279 @@ APE_se = function(fit, est, N, X, y, APE, model = 'probit'){
 
 
   return( sqrt((part_1 + part_2 + part_3)/(N^2*(N-1)^2)) )
+}
+
+#' @export
+se_formula = function(fit, est, N, X, y, model = 'probit'){
+
+  cov_sum_1 = fit$X_origin[,1] * est[1]
+  cov_sum_2 = fit$X_origin[,-1] %*% est[-1]
+  cov_sum = matrix(cov_sum_1 + cov_sum_2, N-1, N)
+  cov_sum = shift_lower_triangle_and_add_zero_diag(cov_sum)
+
+  cov_sum[row(cov_sum) == col(cov_sum)] = 0
+
+  XB_pi <- cov_sum
+  Phi_XB <- pnorm(cov_sum)  # CDF (Φ(Xβ))
+  phi_XB <- dnorm(cov_sum)  # PDF (φ(Xβ))
+
+  Phi_XB <- pmax(Phi_XB, 1e-9)
+  Phi_XB <- pmin(Phi_XB, 1 - 1e-9)
+
+  # preparation for ingredients
+  # d_fix_loss = y - exp(cov_sum)/( 1 + exp(cov_sum))
+  d_fix_loss = - (phi_XB * (y - Phi_XB) / (Phi_XB * (1 - Phi_XB)))
+  #d_fix_2_loss = - exp(cov_sum)/( 1 + exp(cov_sum))^2
+  d_fix_2_loss = (-cov_sum*phi_XB  *Phi_XB * ( 1 -Phi_XB ) - phi_XB*(1-2*Phi_XB)*phi_XB)*(y-Phi_XB)/((Phi_XB*(1-Phi_XB)))^2 - phi_XB^2  / ((Phi_XB*(1-Phi_XB)))
+
+  # d_beta_loss = X * (y - exp(cov_sum)/( 1 + exp(cov_sum)))
+  d_beta_loss = -X * (phi_XB * (y - Phi_XB) / (Phi_XB * (1 - Phi_XB)))
+
+  # d_beta_beta_loss = X * (- exp(cov_sum)/( 1 + exp(cov_sum))^2) * X
+  d_beta_beta_loss = (-cov_sum*phi_XB * X *Phi_XB * ( 1 -Phi_XB ) - phi_XB*(1-2*Phi_XB)*X*phi_XB)*(y-Phi_XB)/((Phi_XB*(1-Phi_XB)))^2 - X * phi_XB^2 * X / ((Phi_XB*(1-Phi_XB)))
+
+  # d_beta_fix_loss = X * ( - exp(cov_sum)/( 1 + exp(cov_sum))^2)
+  d_beta_fix_loss = (-cov_sum*phi_XB * X *Phi_XB * ( 1 -Phi_XB ) - phi_XB*(1-2*Phi_XB)*phi_XB)*(y-Phi_XB)/((Phi_XB*(1-Phi_XB)))^2 - X * phi_XB^2  / ((Phi_XB*(1-Phi_XB)))
+
+  d_beta_beta_big_loss = (1/(N-1))*sum(d_beta_beta_loss) - sum(diag(d_beta_beta_loss))
+  d_beta_fix_big_loss = (1/(N-1))*sum(d_beta_fix_loss) - sum(diag(d_beta_fix_loss))
+  d_fix_2_big_loss = (1/(N-1))*sum(d_fix_2_loss) - sum(diag(d_fix_2_loss))
+  # Hessian matrix
+  H_a_a = -diag(rowSums(d_fix_2_loss))/sqrt(N*(N-1))
+  H_g_g = -diag(colSums(d_fix_2_loss))/sqrt(N*(N-1))
+  H_a_g = -d_fix_2_loss/sqrt(N*(N-1))
+
+  Hessian_bar =   cbind(rbind(H_a_a, t(H_a_g)), rbind(H_a_g, H_g_g))  + c(rep(1,N), rep(-1,N)) %*% t( c(rep(1,N), rep(-1,N)) )/sqrt(N*(N-1))
+
+  Hessain_inverse = solve(Hessian_bar)
+  Hessian_a_a = Hessain_inverse[1:(N), 1:(N)]
+  Hessian_g_a = Hessain_inverse[(N+1):(N+N), 1:(N)]
+  Hessian_a_g = Hessain_inverse[1:(N), (N+1):(N+N)]
+  Hessian_g_g = Hessain_inverse[(N+1):(N+N), (N+1):(N+N)]
+
+  # the matrix
+  the = matrix(0,N,N)
+  for (i in 1:N) {
+    for (j in 1:N) {
+      the[i,j] = -(sum(Hessian_a_a[i,]*colSums(d_beta_fix_loss)) +
+                     sum(Hessian_g_a[j,]*colSums(d_beta_fix_loss)) +
+                     sum(Hessian_a_g[i,]*rowSums(d_beta_fix_loss)) +
+                     sum(Hessian_g_g[j,]*rowSums(d_beta_fix_loss)))/sqrt(N*(N-1))
+    }
+  }
+
+
+  # W_hat
+  W_hat =  -(1 / N) * (  d_beta_beta_big_loss  - d_beta_fix_big_loss %*% solve(d_fix_2_big_loss) %*% d_beta_fix_big_loss  )
+
+  D_beta_loss = d_beta_loss - d_fix_loss*the
+
+  A = (D_beta_loss + t(D_beta_loss))^2
+
+  Omega_hat = 1/(N*(N-1))* sum(A[lower.tri(A)])
+
+
+  return( solve(W_hat) %*% Omega_hat %*% solve(W_hat) )
+
+}
+
+#' @export
+analytical_estimate = function(y, X, N, index, data, link = 'probit', L = L, beta_NULL = NULL){
+  data = data.frame(y = y, X = X, data[,index[1]], data[,index[2]])
+  K = dim(X)[2]
+  # order the data
+  if(is.null(colnames(X)) == 1){
+    colnames(data)[(dim(data)[2]-1):dim(data)[2]] = index
+    data = data[order(data[,index[2]], data[,index[1]]),]
+    p = dim(X)[2]
+    y = data$y
+    if (p==1){
+      X = data[,2]
+    }else{
+      X = data[,(2:p+1)]
+    }
+  }else{
+    colnames(data) = c('y', colnames(X), index)
+    data = data[order(data[,index[2]], data[,index[1]]),]
+    p = dim(X)[2]
+
+    y = data$y
+    X = data[,colnames(X)]
+  }
+  mod <- feglm(y ~ X | index.1 + index.2, data = data, family = binomial(link))
+  return(est = summary(biasCorr(mod, L = L, panel.structure = c( "network"))))
+
+}
+
+#' @export
+se_formula_corrected = function(y, X, N, data, index, est, model = 'probit'){
+  # order the data to match the index and the summy variable of the fixed effects
+  data = data.frame(y = y, X = X, data[,index[1]], data[,index[2]])
+  if(is.null(colnames(X)) == 1){
+    colnames(data)[(dim(data)[2]-1):dim(data)[2]] = index
+    data = data[order(data[,index[2]], data[,index[1]]),]
+    p = dim(X)[2]
+    y = data$y
+    if (p==1){
+      X = data[,2]
+    }else{
+      X = data[,(2:p+1)]
+    }
+  }else{
+    colnames(data) = c('y', colnames(X), index)
+    data = data[order(data[,index[2]], data[,index[1]]),]
+    p = dim(X)[2]
+    
+    y = data$y
+    X = data[,colnames(X)]
+  }
+  
+  
+  # prepare the dummy variable for fixed effects
+  fix_effect = matrix(0, N*N, N + N )
+  for (t in seq(N)) {
+    for (i in seq(N)) {
+      alpha_in = rep(0, N)
+      gamma_in = rep(0, N)
+      alpha_in[i] = 1
+      gamma_in[t] = 1
+      fix_effect[i + (t - 1) * N,] = c(alpha_in - alpha_in[1], gamma_in + alpha_in[1])
+    }
+  }
+  drop_index = NULL
+  for (i in seq(N)){
+    drop_index = cbind(drop_index, i + (i - 1) * N)
+  }
+  fix = fix_effect[-drop_index,]
+  
+  
+  # prepare the design matrix with dummy variables
+  X_design = cbind(X, fix)
+  X_design = apply(X_design, 2, as.numeric)
+  
+
+  # calculate the X'beta + pi, formed as a matrix
+  cov_sum_1 = X_design[,1] * est[1]
+  cov_sum_2 = X_design[,-1] %*% est[-1]
+  cov_sum = matrix(cov_sum_1 + cov_sum_2, N-1, N)
+  cov_sum = shift_lower_triangle_and_add_zero_diag(cov_sum)
+  cov_sum[row(cov_sum) == col(cov_sum)] = 0
+  
+  
+  # X is a matrix of a single covariate, and the same for y
+  X = vector_to_matrix(X, N, ind1 = data_in[,index[1]], ind2 = data_in[,index[2]])
+  y = vector_to_matrix(y, N, ind1 = data_in[,index[1]], ind2 = data_in[,index[2]])
+  y[row(y) == col(y)] = 0
+  
+  
+  # CDF (Φ(Xβ)) and PDF (φ(Xβ))
+  Phi_XB <- pnorm(cov_sum)  
+  phi_XB <- dnorm(cov_sum)  
+  dd_F_fix = -cov_sum * phi_XB
+  Phi_XB[row(Phi_XB) == col(Phi_XB)] = 0
+  phi_XB[row(phi_XB) == col(phi_XB)] = 0
+  Phi_XB <- pmax(Phi_XB, 1e-9)
+  Phi_XB <- pmin(Phi_XB, 1 - 1e-9)
+  
+  
+  # preparation for ingredients
+  # d_fix_loss = y - exp(cov_sum)/( 1 + exp(cov_sum))
+  d_fix_loss =  y * (phi_XB) / Phi_XB  +  (1-y)*(-phi_XB)/(1-Phi_XB) # (phi_XB * (y - Phi_XB) / (Phi_XB * (1 - Phi_XB)))
+  #d_fix_2_loss = - exp(cov_sum)/( 1 + exp(cov_sum))^2
+  d_fix_2_loss = (dd_F_fix * Phi_XB * ( 1 -Phi_XB ) - phi_XB*(1-2*Phi_XB)*phi_XB )*(y-Phi_XB)/((Phi_XB*(1-Phi_XB)))^2 - phi_XB^2  / ((Phi_XB*(1-Phi_XB)))
+  # d_beta_loss = X * (y - exp(cov_sum)/( 1 + exp(cov_sum)))
+  d_beta_loss = X * (phi_XB * (y - Phi_XB) / (Phi_XB * (1 - Phi_XB)))
+  # d_beta_beta_loss = X * (- exp(cov_sum)/( 1 + exp(cov_sum))^2) * X
+  d_beta_beta_loss = (dd_F_fix * Phi_XB * ( 1 -Phi_XB ) - phi_XB*(1-2*Phi_XB)*phi_XB )* (X^2 *(y-Phi_XB)) /((Phi_XB*(1-Phi_XB)))^2 - X^2 * phi_XB^2  / ((Phi_XB*(1-Phi_XB)))
+  # d_beta_fix_loss = X * ( - exp(cov_sum)/( 1 + exp(cov_sum))^2)
+  d_beta_fix_loss = (dd_F_fix * Phi_XB * ( 1 -Phi_XB ) - phi_XB*(1-2*Phi_XB)*phi_XB )* (X *(y-Phi_XB)) /((Phi_XB*(1-Phi_XB)))^2 - X * phi_XB^2  / ((Phi_XB*(1-Phi_XB)))
+  d_beta_beta_big_loss = (1/(N-1))*(sum(d_beta_beta_loss) - sum(diag(d_beta_beta_loss)))
+  d_beta_fix_big_loss = (1/(N-1))*(sum(d_beta_fix_loss) - sum(diag(d_beta_fix_loss)))
+  d_fix_beta_big_loss = (1/(N-1))*(sum(d_beta_fix_loss) - sum(diag(d_beta_fix_loss)))
+  d_fix_2_big_loss = (1/(N-1))*(sum(d_fix_2_loss) - sum(diag(d_fix_2_loss)))
+  
+  
+  # Hessian matrix, based on huges's paper
+  #H_a_a = diag(-rowSums(d_fix_2_loss))/sqrt(N*(N-1))
+  #H_g_g = diag(-colSums(d_fix_2_loss))/sqrt(N*(N-1))
+  for (i in 1:nrow(d_fix_2_loss)) {
+    H_a_a[i, i] <- -(sum(d_fix_2_loss[i, ]) - d_fix_2_loss[i, i])/(N-1)  # sum of off-diagonal elements in row i
+  }
+  for (i in 1:nrow(d_fix_2_loss)) {
+    H_g_g[i, i] <- -(sum(d_fix_2_loss[-i, i]))/(N-1) # sum of off-diagonal elements in row i
+  }
+  
+  H_a_g = -d_fix_2_loss/((N-1))
+  Hessian_bar =   cbind(rbind(H_a_a, t(H_a_g)), rbind(H_a_g, H_g_g))  + c(rep(1,N), rep(-1,N)) %*% t( c(rep(1,N), rep(-1,N)) )/N
+  Hessain_inverse = solve(Hessian_bar)
+  Hessian_a_a = Hessain_inverse[1:(N), 1:(N)]
+  Hessian_g_a = Hessain_inverse[(N+1):(N+N), 1:(N)]
+  Hessian_a_g = Hessain_inverse[1:(N), (N+1):(N+N)]
+  Hessian_g_g = Hessain_inverse[(N+1):(N+N), (N+1):(N+N)]
+
+  # matrix 'The', \based on huges's paper
+  the = matrix(0, N, N)
+  for (i in 1:N) {
+    for (j in 1:N) {
+      temp_sum <- 0
+      for (s in 1:N) {
+        for (t in 1:N) {
+          if (t != s) {
+            temp_sum <- temp_sum + (-1/(N)) * (Hessian_a_a[i, s] + Hessian_g_a[j, s] + Hessian_a_g[i, t] + Hessian_g_g[j, t]) * d_beta_fix_loss[s, t]
+          }
+        }
+      }
+      the[i, j] <- temp_sum
+    }
+  }
+  
+  # W_hat based on Iva ́ n2016
+  W_hat =   -(1 / ((N-1)*N)) * (sum(  d_beta_beta_loss  - d_fix_2_loss * the * the  ) - sum(diag(d_beta_beta_loss  - d_fix_2_loss * the * the )) ) # -(1 / N) * (  d_beta_beta_big_loss  - d_beta_fix_big_loss * solve(d_fix_2_big_loss) * d_beta_fix_big_loss  )
+  
+  # Omega_hat based on Iva ́ n2016
+  D_beta_loss = d_beta_loss - d_fix_loss*the
+  Omega_hat <- 0
+  for (i in 1:N) {
+    for (j in setdiff(1:N, i)) {
+      for (k in setdiff(1:N, i)) {
+        Omega_hat <- Omega_hat + D_beta_loss[i, j] * D_beta_loss[i, k]/(N*(N-1))
+      }
+    }
+  }
+
+  se_version1 = sqrt(solve(W_hat) * Omega_hat * solve(W_hat)/N^2)
+  
+  # matrix from huges
+  # W_hat
+  W_hat =   -(1 / N) * (  d_beta_beta_big_loss  - d_beta_fix_big_loss * solve(d_fix_2_big_loss) * d_beta_fix_big_loss  )
+  
+  D_beta_loss = d_beta_loss - d_fix_loss*the
+  
+  A = (D_beta_loss + t(D_beta_loss))^2
+  
+  Omega_hat =  1/(N*(N-1))* sum(A[lower.tri(A)])
+  
+  se_version2 = sqrt(solve(W_hat) * Omega_hat * solve(W_hat)/N^2)
+  
+  res = list(se_1 = se_version1, se_2 = se_version2)
+  return( res)
+  
+}
+
+vector_to_matrix <- function(v, N, ind1, ind2) {
+  # Determine matrix size
+  nrow <- N
+  ncol <- N
+  
+  # Initialize zero matrix
+  M <- matrix(0, nrow = nrow, ncol = ncol)
+  
+  # Assign values
+  for (i in seq_along(v)) {
+    M[ind1[i], ind2[i]] <- v[i]
+  }
+  
+  return(M)
 }
 
 #' @export
