@@ -396,7 +396,7 @@ split_jackknife = function(y, X, N, index, data, link = 'probit', beta_NULL = NU
 
 #' @export
 #' @import alpaca
-analytical_estimate = function(y, X, N, index, data, link = 'probit', L = L, beta_NULL = NULL){
+analytical_Amrei = function(y, X, N, index, data, link = 'probit', L = 1, beta_NULL = NULL){
   data = data.frame(y = y, X = X, data[,index[1]], data[,index[2]])
   K = dim(X)[2]
   # order the data
@@ -424,7 +424,7 @@ analytical_estimate = function(y, X, N, index, data, link = 'probit', L = L, bet
 }
 
 #' @export
-analytical_corrected_own = function(y, X, N, index, data, link = 'probit', L = L, beta_NULL = NULL){
+analytical_corrected = function(y, X, N, index, data, link = 'probit', L = L, beta_NULL = NULL){
   data = data.frame(y = y, X = X, data[,index[1]], data[,index[2]])
   K = dim(X)[2]
   # order the data
