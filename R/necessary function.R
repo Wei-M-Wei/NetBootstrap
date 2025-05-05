@@ -657,6 +657,7 @@ compute_derivatives <- function(eta, y, X, model = 'probit') {
   return(res)
 }
 
+#' @importFrom fixest feols
 get_weighted_projection_fitted <- function(X, weight, id, time) {
   # Input validation: check if all vectors have the same length
   if (length(X) != length(weight) || length(X) != length(id) || length(X) != length(time)) {
@@ -676,6 +677,7 @@ get_weighted_projection_fitted <- function(X, weight, id, time) {
   return(fitted(model))
 }
 
+#' @importFrom fixest feols
 get_weighted_projection_fitted_exclude_t_eq_i <- function(X, weight, id, time) {
   # Input validation: check if all vectors have the same length
   if (length(X) != length(weight) || length(X) != length(id) || length(X) != length(time)) {
