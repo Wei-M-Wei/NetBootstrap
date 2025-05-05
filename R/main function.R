@@ -248,6 +248,7 @@ network_bootstrap = function(y, X, N, bootstrap_time, index, data, link = 'probi
 
 
 #' @export
+#' @import fixest
 split_jackknife = function(y, X, N, index, data, link = 'probit', beta_NULL = NULL){
 
   data_j = data.frame(y = y, X = X, data[,index[1]], data[,index[2]])
