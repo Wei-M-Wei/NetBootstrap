@@ -657,3 +657,63 @@ compute_derivatives <- function(eta, y, X, model = 'probit') {
   return(res)
 }
 
+get_weighted_projection_fitted <- function(X, weight, id, time) {
+  # Input validation: check if all vectors have the same length
+  if (length(X) != length(weight) || length(X) != length(id) || length(X) != length(time)) {
+    stop("All input vectors (X, weight, id, time) must have the same length.")
+  }
+
+  # Replace NaN in X with 0
+  X[is.nan(X)] <- 0
+
+  # Create data frame from input vectors
+  df <- data.frame(Xit = X, weight = weight, id = id, time = time)
+
+  # Run the weighted two-way fixed effects regression
+  model <- feols(Xit ~ 1 | id + time, data = df, weights = ~weight)
+
+  # Return fitted (predicted) values from the model
+  return(fitted(model))
+}
+
+get_weighted_projection_fitted_exclude_t_eq_i <- function(X, weight, id, time) {
+  # Input validation: check if all vectors have the same length
+  if (length(X) != length(weight) || length(X) != length(id) || length(X) != length(time)) {
+    stop("All input vectors (X, weight, id, time) must have the same length.")
+  }
+
+  # Replace NaN in X with 0
+  X[is.nan(X)] <- 0
+
+  # Create data frame from input vectors
+  df <- data.frame(Xit = X, weight = weight, id = id, time = time)
+
+  # Exclude rows where time == id (t != i)
+  df <- df[df$id != df$time, ]
+
+  # Run the weighted two-way fixed effects regression
+  model <- feols(Xit ~ 1 | id + time, data = df, weights = ~weight)
+
+  # Return fitted (predicted) values from the model
+  return(fitted(model))
+}
+
+matrix_to_panel_df <- function(X_mat) {
+  if (!is.matrix(X_mat)) {
+    stop("Input must be a matrix.")
+  }
+
+  # Flatten matrix into vector
+  X_vec <- as.vector(X_mat)
+
+  # Get dimensions
+  n_rows <- nrow(X_mat)
+  n_cols <- ncol(X_mat)
+
+  # Create row (id) and column (time) indices
+  id <- rep(1:n_rows, times = n_cols)
+  time <- rep(1:n_cols, each = n_rows)
+
+  # Return data frame
+  return(data.frame(id = id, time = time, X = X_vec))
+}
