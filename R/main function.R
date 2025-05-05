@@ -246,6 +246,7 @@ network_bootstrap = function(y, X, N, bootstrap_time, index, data, link = 'probi
   return(res)
 }
 
+
 #' @export
 split_jackknife = function(y, X, N, index, data, link = 'probit', beta_NULL = NULL){
 
@@ -309,7 +310,6 @@ split_jackknife = function(y, X, N, index, data, link = 'probit', beta_NULL = NU
   log_likelihood_constrain_j = NULL
 
 
-
   for (k in seq(N-1)){
     data = data_j
     index_jack = list()
@@ -323,7 +323,6 @@ split_jackknife = function(y, X, N, index, data, link = 'probit', beta_NULL = NU
     match_idx <- sapply(index_jack, function(pair) {
       which(data[,index[2]] == pair[1] & data[,index[1]] == pair[2])
     })
-
 
     y_split = y[-match_idx]
     X_split = as.matrix(X)[-match_idx,]
@@ -377,22 +376,143 @@ split_jackknife = function(y, X, N, index, data, link = 'probit', beta_NULL = NU
   estimate_jack[K+1] = sum(estimate_jack[(N+K+1):(N+N+K)]) - sum(estimate_jack[(K+2):(N+K)])
 
 
+  # standard error
+  # calculate the X'beta + pi, formed as a matrix
+  cov_sum_1 = X_save[,1] * estimate_jack[1]
+  cov_sum_2 = X_save[,-1] %*% estimate_jack[-1]
+  cov_sum = matrix(cov_sum_1 + cov_sum_2, N-1, N)
+  cov_sum = shift_lower_triangle_and_add_zero_diag(cov_sum)
+  cov_sum[row(cov_sum) == col(cov_sum)] = 0
+
+
+  # X is a matrix of a single covariate, and the same for y
+  X = vector_to_matrix(X, N, ind1 = data_j[,index[1]], ind2 = data_j[,index[2]])
+  y = vector_to_matrix(y, N, ind1 = data_j[,index[1]], ind2 = data_j[,index[2]])
+  y[row(y) == col(y)] = 0
+
+  # CDF (Φ(Xβ)) and PDF (φ(Xβ))
+  Phi_XB <- pnorm(cov_sum)
+  phi_XB <- dnorm(cov_sum)
+  dd_F_fix = -cov_sum * phi_XB
+  Phi_XB[row(Phi_XB) == col(Phi_XB)] = 0
+  phi_XB[row(phi_XB) == col(phi_XB)] = 0
+  Phi_XB <- pmax(Phi_XB, 1e-9)
+  Phi_XB <- pmin(Phi_XB, 1 - 1e-9)
+
+  derivative_ingredients = compute_derivatives(eta = cov_sum, y = y, X = X)
+
+  # preparation for ingredients
+  d_fix_loss =  derivative_ingredients$d_fix_loss
+  d_beta_loss = derivative_ingredients$d_beta_loss
+  d_fix_fix_loss = derivative_ingredients$d_fix_fix_loss# d_beta_loss = X * (y - exp(cov_sum)/( 1 + exp(cov_sum)))
+  d_beta_beta_loss = derivative_ingredients$d_beta_beta_loss# d_beta_fix_loss = X * ( - exp(cov_sum)/( 1 + exp(cov_sum))^2)
+  d_beta_fix_loss = derivative_ingredients$d_beta_fix_loss
+
+
+  # Hessian matrix
+  H_a_a = matrix(0, N, N)
+  H_g_g = matrix(0, N, N)
+  for (i in 1:N) {
+    H_a_a[i, i] <- -(sum(d_fix_fix_loss[i, ]) - d_fix_fix_loss[i, i])/(N-1)  # sum of off-diagonal elements in row i
+  }
+  for (i in 1:N) {
+    H_g_g[i, i] <- -(sum(d_fix_fix_loss[-i, i]))/(N-1) # sum of off-diagonal elements in row i
+  }
+  H_a_g = -d_fix_fix_loss/((N-1))
+
+  Hessian_bar =   cbind(rbind(H_a_a, t(H_a_g)), rbind(H_a_g, H_g_g))  + c(rep(1,N), rep(-1,N)) %*% t( c(rep(1,N), rep(-1,N)) )/N
+  Hessain_inverse = solve(Hessian_bar)
+  Hessian_a_a = Hessain_inverse[1:(N), 1:(N)]
+  Hessian_g_a = Hessain_inverse[(N+1):(N+N), 1:(N)]
+  Hessian_a_g = Hessain_inverse[1:(N), (N+1):(N+N)]
+  Hessian_g_g = Hessain_inverse[(N+1):(N+N), (N+1):(N+N)]
+
+  # matrix 'Xi'
+  the = matrix(0, N, N)
+  for (i in 1:N) {
+    for (j in 1:N) {
+      temp_sum <- 0
+      for (s in 1:N) {
+        for (t in 1:N) {
+          if (t != s) {
+            temp_sum <- temp_sum + (-1/(N)) * (Hessian_a_a[i, s] + Hessian_g_a[j, s] + Hessian_a_g[i, t] + Hessian_g_g[j, t]) * d_beta_fix_loss[s, t]
+          }
+        }
+      }
+      the[i, j] <- temp_sum
+    }
+  }
+
+  # W_hat based on Iva ́ n2016
+  W_hat =   -(1 / ((N-1)*N)) * (sum(  d_beta_beta_loss  - d_fix_fix_loss * the * the  ) - sum(diag(d_beta_beta_loss  - d_fix_fix_loss * the * the )) ) # -(1 / N) * (  d_beta_beta_big_loss  - d_beta_fix_big_loss * solve(d_fix_2_big_loss) * d_beta_fix_big_loss  )
+
+  #### Another way to calculate the bias corrected
+  # another way to calculate the analytical corrected estimate
+  H = phi_XB/(Phi_XB*(1-Phi_XB))
+  small_w = H * phi_XB
+
+  # W_hat
+  x1 = matrix_to_panel_df(d_beta_fix_loss)
+  x2 = matrix_to_panel_df(d_fix_fix_loss)
+  to_in = x1$X/x2$X
+  to_in[is.nan(to_in)] <- 0
+  weight = -x2$X
+  weight[which(weight==0)] = 1
+  re = get_weighted_projection_fitted_exclude_t_eq_i(to_in, weight, x1$id, x1$time)
+  re_matrix = matrix(re, N-1, N)
+  re_matrix = shift_lower_triangle_and_add_zero_diag(re_matrix)
+  tilde_X = X - re_matrix
+  W_hat_another =   (1 / ((N-1)*N)) * (sum(  small_w  * tilde_X  * tilde_X   ) - sum(diag( small_w  * tilde_X  * tilde_X  )) )
+
+  # Omega_hat based on Iva ́ n2016
+  D_beta_loss = d_beta_loss - d_fix_loss*the
+  Omega_hat <- 0
+  for (i in 1:N) {
+    for (j in setdiff(1:N, i)) {
+      for (k in setdiff(1:N, i)) {
+        Omega_hat <- Omega_hat + D_beta_loss[i, j] * D_beta_loss[i, k]/(N*(N-1))
+      }
+    }
+  }
+
+  # matrix from huges
+  d_beta_beta_big_loss = (1/(N-1))*(sum(d_beta_beta_loss) - sum(diag(d_beta_beta_loss)))
+  d_beta_fix_big_loss = (1/(N-1))*(sum(d_beta_fix_loss) - sum(diag(d_beta_fix_loss)))
+  d_fix_beta_big_loss = (1/(N-1))*(sum(d_beta_fix_loss) - sum(diag(d_beta_fix_loss)))
+  d_fix_2_big_loss = (1/(N-1))*(sum(d_fix_fix_loss) - sum(diag(d_fix_fix_loss)))
+
+  # W_hat
+  W_hat =   -(1 / N) * (  d_beta_beta_big_loss  - d_beta_fix_big_loss * solve(d_fix_2_big_loss) * d_beta_fix_big_loss  )
+  D_beta_loss = d_beta_loss - d_fix_loss*the
+  A = (D_beta_loss + t(D_beta_loss))^2
+
+  # Omega_hat
+  Omega_hat =  1/(N*(N-1))* sum(A[lower.tri(A)])
+
+
 
   if(is.null(beta_NULL) != 1){
     res = list(cof_jack = estimate_jack, cof_jack_NULL = cof_constrain_j,
                log_likelihood_jack = log_likelihood_j,
                log_likelihood_jack_NULL = log_likelihood_constrain_j,
-               Hessian_jack = Hessian_inv_1_j, Hessian_jack_NULL = Hessian_inv_2_constrain_j, X_origin = as.matrix(X_save)
+               Hessian_jack = Hessian_inv_1_j, Hessian_jack_NULL = Hessian_inv_2_constrain_j, X_origin = as.matrix(X_save),
+               se_weidner = sqrt(solve(W_hat)/(N*(N-1))), se_no_MLE =sqrt(solve(W_hat) * Omega_hat * solve(W_hat)/(N*(N-1))),
+               se_weidner_another = sqrt(solve(W_hat_another)/(N*(N-1))),
+               se_huges = sqrt(solve(W_hat)/(N*(N-1))), se_huges_no_MLE = sqrt(solve(W_hat) * Omega_hat * solve(W_hat)/(N*(N-1)))
     )
   }else{
     res = list(cof_jack = estimate_jack,
                log_likelihood_jack = log_likelihood_j,
-               Hessian_jack = Hessian_inv_1_j, X_origin = as.matrix(X_save)
+               Hessian_jack = Hessian_inv_1_j, X_origin = as.matrix(X_save),
+               se_weidner = sqrt(solve(W_hat)/(N*(N-1))), se_no_MLE =sqrt(solve(W_hat) * Omega_hat * solve(W_hat)/(N*(N-1))),
+               se_weidner_another = sqrt(solve(W_hat_another)/(N*(N-1))),
+               se_huges = sqrt(solve(W_hat)/(N*(N-1))), se_huges_no_MLE = sqrt(solve(W_hat) * Omega_hat * solve(W_hat)/(N*(N-1)))
     )
   }
   return(res)
 
 }
+
 
 #' @export
 #' @import alpaca
@@ -422,6 +542,7 @@ analytical_Amrei = function(y, X, N, index, data, link = 'probit', L = 1, beta_N
   return(est = summary(biasCorr(mod, L = L, panel.structure = c( "network"))))
 
 }
+
 
 #' @export
 analytical_corrected = function(y, X, N, index, data, link = 'probit', L = L, beta_NULL = NULL){
@@ -565,6 +686,15 @@ analytical_corrected = function(y, X, N, index, data, link = 'probit', L = L, be
     }
   }
 
+  # another way to calculate 'the'
+  # x1 = matrix_to_panel_df(d_beta_fix_loss)
+  # x2 = matrix_to_panel_df(d_fix_fix_loss)
+  # to_in = x1$X/x2$X
+  # to_in[is.nan(to_in)] <- 0
+  # weight = -x2$X
+  # weight[which(weight==0)] = 1
+  # re = get_weighted_projection_fitted_exclude_t_eq_i(to_in, weight, x1$id, x1$time)
+  # vector_to_matrix(re, N, ind1 = x1$id, ind2 =x1$time)
 
   D_beta_loss = d_beta_loss - d_fix_loss * the
   D_beta_dix_loss = d_beta_fix_loss - d_fix_fix_loss * the
@@ -613,66 +743,65 @@ analytical_corrected = function(y, X, N, index, data, link = 'probit', L = L, be
     }
   }
 
-  estimate_analytical = est[1] - solve(W_hat)*B_hat*(1/N) - solve(W_hat)*D_hat*(1/N)
-  res = list(est = estimate_analytical, se = sqrt(solve(W_hat)/(N^2)), se_2 = sqrt(solve(W_hat) * Omega_hat * solve(W_hat)/(N^2)) )
-  return(res)
 
-}
+  #### Another way to calculate the bias corrected
+  # another way to calculate the analytical corrected estimate
+  H = phi_XB/(Phi_XB*(1-Phi_XB))
+  small_w = H * phi_XB
 
-compute_derivatives <- function(eta, y, X, model = 'probit') {
+  # W_hat
+  x1 = matrix_to_panel_df(d_beta_fix_loss)
+  x2 = matrix_to_panel_df(d_fix_fix_loss)
+  to_in = x1$X/x2$X
+  to_in[is.nan(to_in)] <- 0
+  weight = -x2$X
+  weight[which(weight==0)] = 1
+  re = get_weighted_projection_fitted_exclude_t_eq_i(to_in, weight, x1$id, x1$time)
+  re_matrix = matrix(re, N-1, N)
+  re_matrix = shift_lower_triangle_and_add_zero_diag(re_matrix)
+  tilde_X = X - re_matrix
+  W_hat_another =   (1 / ((N-1)*N)) * (sum(  small_w  * tilde_X  * tilde_X   ) - sum(diag( small_w  * tilde_X  * tilde_X  )) ) # -(1 / N) * (  d_beta_beta_big_loss  - d_beta_fix_big_loss * solve(d_fix_2_big_loss) * d_beta_fix_big_loss  )
 
-  z <- eta
-  phi_z <- dnorm(z)
-  Phi_z <- pnorm(z)
-  Phi_z[row(Phi_z) == col(Phi_z)] = 0
-  phi_z[row(phi_z) == col(phi_z)] = 0
+  # D_hat
+  D_hat_another = -(0.5 / (N-1)) * sum(colSums((H * dd_F_fix * tilde_X) * (1 - diag(N))) / colSums(small_w * (1 - diag(N))))
 
-  # Avoid division by 0
-  Phi_z <- pmax(Phi_z, 1e-10)
-  one_minus_Phi_z <- pmax(1 - Phi_z, 1e-10)
-  dd_F_fix = - eta * phi_z
-  ddd_F_fix = eta^2 * phi_z - phi_z
+  # B_hat
+  compute_B_hat_another <- function(D, E, B, C, L) {
+    N <- nrow(D)
+    result <- 0
 
+    for (i in 1:N) {
+      sum_l_term <- 0
+      for (l in 1:L) {
+        coeff <- N / (N - l)
+        for (j in (l + 1):N) {
+          if (j != i && j != (l + i)) {
+            d_index <- j - l
+            if (d_index >= 1 && d_index <= N) {
+              sum_l_term <- sum_l_term + coeff * D[i, d_index] * E[i, j]
+            }
+          }
+        }
+      }
 
-  score1 <- (y / Phi_z - (1 - y) / one_minus_Phi_z) * phi_z
+      sum_B <- sum(B[i, -i])       # exclude j == i
+      sum_C <- sum(C[i, -i])       # exclude j == i
 
-  # Second derivative w.r.t. z
-  term1 <- y * ((-z * phi_z) / Phi_z - (phi_z^2) / (Phi_z^2))
-  term2 <- (1 - y) * ((-z * phi_z) / one_minus_Phi_z + (phi_z^2) / (one_minus_Phi_z^2))
-  score2 <- term1 - term2
+      result <- result + (sum_l_term + sum_B) / sum_C
+    }
 
-  # Third derivative w.r.t. z
-  term1 = y * ( (ddd_F_fix*Phi_z - phi_z*dd_F_fix) / Phi_z^2  - (2*phi_z * dd_F_fix * Phi_z^2 - 2 * Phi_z * phi_z^3) / Phi_z^4   )
-  term2 = (1-y) * ( (ddd_F_fix*(1-Phi_z) + phi_z*dd_F_fix) / (1-Phi_z)^2  + (2*phi_z * dd_F_fix * (1-Phi_z)^2 + 2 * (1-Phi_z) * phi_z^3) / (1-Phi_z)^4   )
-  score3 <- term1 - term2
-
-  if (model == 'probit'){
-
-  d_beta_loss = X * score1
-  d_fix_loss = score1
-  # Second-order derivatives
-  d_beta_beta_loss <- score2 * X^2      # d²ℓ / dβ²
-  d_fix_fix_loss  <- score2            # d²ℓ / dπ²
-  d_beta_fix_loss <- score2 * X       # d²ℓ / dβ dπ
-
-  d_beta_beta_beta_loss <- score3 * X^3      # d²ℓ / dβ²
-  d_fix_fix_fix_loss  <- score3           # d²ℓ / dπ²
-  d_beta_fix_fix_loss <- score3 * X       # d²ℓ / dβ dπ
-
+    return(result)
   }
+  B_hat_another = -(0.5/N) * compute_B_hat_another(2* H * (y - Phi_XB), small_w * tilde_X, H * dd_F_fix * tilde_X, small_w, L)
 
-  diag(d_fix_loss) = 0
-  diag(d_beta_loss) = 0
-  diag(d_beta_beta_loss) = 0
-  diag(d_fix_fix_loss) = 0
-  diag(d_beta_fix_loss) = 0
-  diag(d_beta_beta_loss) = 0
-  diag(d_beta_beta_beta_loss) = 0
-  diag(d_beta_fix_fix_loss) = 0
-  diag(d_fix_fix_fix_loss) = 0
 
-  res = list(d_fix_loss = d_fix_loss, d_fix_fix_loss = d_fix_fix_loss,
-             d_beta_loss = d_beta_loss, d_beta_beta_loss = d_beta_beta_loss, d_beta_fix_loss = d_beta_fix_loss,
-             d_beta_beta_beta_loss = d_beta_beta_beta_loss, d_beta_fix_fix_loss = d_beta_fix_fix_loss, d_fix_fix_fix_loss = d_fix_fix_fix_loss)
+  # estimate
+  estimate_analytical = est[1] - solve(W_hat)*B_hat*(1/(N-1)) - solve(W_hat)*D_hat*(1/N)
+  estimate_analytical_another = est[1] - solve(W_hat_another)*B_hat_another*(1/(N-1)) - solve(W_hat_another)*D_hat_another*(1/N)
+
+  res = list(est = estimate_analytical, se = sqrt(solve(W_hat)/(N*(N-1))), se_no_MLE = sqrt(solve(W_hat) * Omega_hat * solve(W_hat)/(N*(N-1))),
+             est_another = estimate_analytical_another, se_another = sqrt(solve(W_hat_another)/(N*(N-1))))
   return(res)
+
 }
+

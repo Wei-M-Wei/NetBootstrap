@@ -321,6 +321,24 @@ se_formula_corrected = function(y, X, N, data, index, est, model = 'probit'){
   # W_hat based on Iva ́ n2016
   W_hat =   -(1 / ((N-1)*N)) * (sum(  d_beta_beta_loss  - d_fix_fix_loss * the * the  ) - sum(diag(d_beta_beta_loss  - d_fix_fix_loss * the * the )) ) # -(1 / N) * (  d_beta_beta_big_loss  - d_beta_fix_big_loss * solve(d_fix_2_big_loss) * d_beta_fix_big_loss  )
 
+  #### Another way to calculate the bias corrected
+  # another way to calculate the analytical corrected estimate
+  H = phi_XB/(Phi_XB*(1-Phi_XB))
+  small_w = H * phi_XB
+
+  # W_hat
+  x1 = matrix_to_panel_df(d_beta_fix_loss)
+  x2 = matrix_to_panel_df(d_fix_fix_loss)
+  to_in = x1$X/x2$X
+  to_in[is.nan(to_in)] <- 0
+  weight = -x2$X
+  weight[which(weight==0)] = 1
+  re = get_weighted_projection_fitted_exclude_t_eq_i(to_in, weight, x1$id, x1$time)
+  re_matrix = matrix(re, N-1, N)
+  re_matrix = shift_lower_triangle_and_add_zero_diag(re_matrix)
+  tilde_X = X - re_matrix
+  W_hat_another =   (1 / ((N-1)*N)) * (sum(  small_w  * tilde_X  * tilde_X   ) - sum(diag( small_w  * tilde_X  * tilde_X  )) )
+
   # Omega_hat based on Iva ́ n2016
   D_beta_loss = d_beta_loss - d_fix_loss*the
   Omega_hat <- 0
@@ -331,8 +349,6 @@ se_formula_corrected = function(y, X, N, data, index, est, model = 'probit'){
       }
     }
   }
-
-  se_version1 = sqrt(solve(W_hat) * Omega_hat * solve(W_hat)/N^2)
 
   # matrix from huges
   d_beta_beta_big_loss = (1/(N-1))*(sum(d_beta_beta_loss) - sum(diag(d_beta_beta_loss)))
@@ -348,9 +364,10 @@ se_formula_corrected = function(y, X, N, data, index, est, model = 'probit'){
   # Omega_hat
   Omega_hat =  1/(N*(N-1))* sum(A[lower.tri(A)])
 
-  se_version2 = sqrt(solve(W_hat) * Omega_hat * solve(W_hat)/N^2)
+  res = list(se_weidner = sqrt(solve(W_hat)/(N*(N-1))), se_no_MLE =sqrt(solve(W_hat) * Omega_hat * solve(W_hat)/(N*(N-1))),
+             se_huges = sqrt(solve(W_hat)/(N*(N-1))), se_huges_no_MLE = sqrt(solve(W_hat) * Omega_hat * solve(W_hat)/(N*(N-1))))
 
-  res = list(se_1 = se_version1, se_2 = se_version2)
+
   return(res)
 
 }
