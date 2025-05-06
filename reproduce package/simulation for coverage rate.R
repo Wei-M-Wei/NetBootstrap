@@ -20,7 +20,7 @@ N_seq = c(N)
 bootstrap_time = 499
 
 # repitition times
-mle_num = 100
+mle_num = 1000
 
 for(design in c(1,2,3,4)){
 
@@ -58,7 +58,7 @@ for(design in c(1,2,3,4)){
       estimate_jack = NULL
 
       # prepare the data
-      DGP = data_generation(N = N, beta = beta, design = design )
+      DGP = data_generation( N = N, beta = beta, design = design )
       y = DGP$y
       X_design = DGP$X
       data_in = as.data.frame(DGP$data)
@@ -76,7 +76,7 @@ for(design in c(1,2,3,4)){
       Mean_bootstrap_estimate = fit$cof_mean[1]
       jack_estimate = fit_jack$cof_jack[1]
       analytical_estimate = fit_analytical$cm[1]
-      analytical_estimate_own = fit_analytical_own$est
+      analytical_estimate_own = fit_analytical_own$est[1]
       bootstrap_estimate = fit$cof_bootstrap_all[,1]
       mean_bias = mean(fit$cof_bootstrap_all[,1]) - fit$cof_MLE[1]
       se_MLE = sqrt(fit$Hessian_MLE[1,1])
