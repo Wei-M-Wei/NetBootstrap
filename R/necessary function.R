@@ -1,12 +1,68 @@
 #' @export
 #'
-APE_se = function(fit, est, N, X, y, APE, model = 'probit'){
+APE_se = function(y, X, N, data, index, est, APE, model = 'probit'){
+  # order the data to match the index and the summy variable of the fixed effects
+  data = data.frame(y = y, X = X, data[,index[1]], data[,index[2]])
+  if(is.null(colnames(X)) == 1){
+    colnames(data)[(dim(data)[2]-1):dim(data)[2]] = index
+    data = data[order(data[,index[2]], data[,index[1]]),]
+    p = dim(X)[2]
+    y = data$y
+    if (p==1){
+      X = data[,2]
+    }else{
+      X = data[,(2:p+1)]
+    }
+  }else{
+    colnames(data) = c('y', colnames(X), index)
+    data = data[order(data[,index[2]], data[,index[1]]),]
+    p = dim(X)[2]
+
+    y = data$y
+    X = data[,colnames(X)]
+  }
 
 
-  cov_sum_1 = fit$X_origin[,1] * est[1]
-  cov_sum_2 = fit$X_origin[,-1] %*% est[-1]
-  cov_APE = matrix(est[1] + fit$X_origin[,-1] %*% est[-1], N-1, N)
-  cov_APE_minus = matrix(-est[1] + fit$X_origin[,-1] %*% est[-1], N-1, N)
+  # prepare the dummy variable for fixed effects
+  fix_effect = matrix(0, N*N, N + N )
+  for (t in seq(N)) {
+    for (i in seq(N)) {
+      alpha_in = rep(0, N)
+      gamma_in = rep(0, N)
+      alpha_in[i] = 1
+      gamma_in[t] = 1
+      fix_effect[i + (t - 1) * N,] = c(alpha_in - alpha_in[1], gamma_in + alpha_in[1])
+    }
+  }
+  drop_index = NULL
+  for (i in seq(N)){
+    drop_index = cbind(drop_index, i + (i - 1) * N)
+  }
+  fix = fix_effect[-drop_index,]
+
+
+  # prepare the design matrix with dummy variables
+  X_design = cbind(X, fix)
+  X_design = apply(X_design, 2, as.numeric)
+
+
+  # calculate the X'beta + pi, formed as a matrix
+  cov_sum_1 = X_design[,1] * est[1]
+  cov_sum_2 = X_design[,-1] %*% est[-1]
+  cov_sum = matrix(cov_sum_1 + cov_sum_2, N-1, N)
+  cov_sum = shift_lower_triangle_and_add_zero_diag(cov_sum)
+  cov_sum[row(cov_sum) == col(cov_sum)] = 0
+
+
+  # X is a matrix of a single covariate, and the same for y
+  X = vector_to_matrix(X, N, ind1 = data[,index[1]], ind2 = data[,index[2]])
+  y = vector_to_matrix(y, N, ind1 = data[,index[1]], ind2 = data[,index[2]])
+  y[row(y) == col(y)] = 0
+
+  cov_sum_1 = X_design[,1] * est[1]
+  cov_sum_2 = X_design[,-1] %*% est[-1]
+  cov_APE = matrix(est[1] + X_design[,-1] %*% est[-1], N-1, N)
+  cov_APE_minus = matrix(-est[1] + X_design[,-1] %*% est[-1], N-1, N)
   cov_sum = matrix(cov_sum_1 + cov_sum_2, N-1, N)
 
   cov_APE = shift_lower_triangle_and_add_zero_diag(cov_APE)
@@ -17,31 +73,22 @@ APE_se = function(fit, est, N, X, y, APE, model = 'probit'){
   cov_APE[row(cov_APE) == col(cov_APE)] = 0
   cov_APE_minus[row(cov_APE_minus) == col(cov_APE_minus)] = 0
 
-  # CDF (Φ(Xβ)) and PDF (φ(Xβ))
-  Phi_XB <- pnorm(cov_sum)
-  phi_XB <- dnorm(cov_sum)
-  dd_F_fix = -cov_sum * phi_XB
-  Phi_XB[row(Phi_XB) == col(Phi_XB)] = 0
-  phi_XB[row(phi_XB) == col(phi_XB)] = 0
-  Phi_XB <- pmax(Phi_XB, 1e-9)
-  Phi_XB <- pmin(Phi_XB, 1 - 1e-9)
+  # X is a matrix of a single covariate, and the same for y
+  X = vector_to_matrix(X, N, ind1 = data[,index[1]], ind2 = data[,index[2]])
+  y = vector_to_matrix(y, N, ind1 = data[,index[1]], ind2 = data[,index[2]])
+  y[row(y) == col(y)] = 0
 
+  # CDF (Φ(Xβ)) and PDF (φ(Xβ))
   derivative_ingredients = compute_derivatives(eta = cov_sum, y = y, X = X)
 
   # preparation for ingredients
-  # d_fix_loss = y - exp(cov_sum)/( 1 + exp(cov_sum))
   d_fix_loss =  derivative_ingredients$d_fix_loss
   d_beta_loss = derivative_ingredients$d_beta_loss
-  #d_fix_fix_loss = - exp(cov_sum)/( 1 + exp(cov_sum))^2
-  d_fix_fix_loss = derivative_ingredients$d_fix_fix_loss# d_beta_loss = X * (y - exp(cov_sum)/( 1 + exp(cov_sum)))
-  # d_beta_beta_loss = X * (- exp(cov_sum)/( 1 + exp(cov_sum))^2) * X
-  d_beta_beta_loss = derivative_ingredients$d_beta_beta_loss# d_beta_fix_loss = X * ( - exp(cov_sum)/( 1 + exp(cov_sum))^2)
+  d_fix_fix_loss = derivative_ingredients$d_fix_fix_loss
+  d_beta_beta_loss = derivative_ingredients$d_beta_beta_loss
   d_beta_fix_loss = derivative_ingredients$d_beta_fix_loss
-
-
   d_fix_APE =  (1/sqrt(2*pi) * exp( -cov_APE^2 / 2 ) - 1/sqrt(2*pi) * exp( -cov_APE_minus^2 / 2 ))/2
   d_beta_APE = (1/sqrt(2*pi) * exp( -cov_APE^2 / 2 ) + 1/sqrt(2*pi) * exp( -cov_APE_minus^2 / 2 ))/2
-
 
   # Hessian matrix
   H_a_a = matrix(0, N, N)
@@ -105,7 +152,6 @@ APE_se = function(fit, est, N, X, y, APE, model = 'probit'){
   tau = as.numeric(solve(W_bar) * D_beta_delta)  * D_beta_loss - phi * d_fix_loss
 
   APE_residual = APE - colMeans(APE) # indentical assumption
-
 
   part_1 = sum(APE_residual%*%APE_residual) - sum(diag(APE_residual%*%APE_residual))
   part_2 = compute_sum(APE_residual)
@@ -608,11 +654,11 @@ compute_derivatives <- function(eta, y, X, model = 'probit') {
   phi_z[row(phi_z) == col(phi_z)] = 0
 
   # Avoid division by 0
-  Phi_z <- pmax(Phi_z, 1e-6)
-  Phi_z <- pmin(Phi_z, 1 - 1e-6)
+  Phi_z <- pmax(Phi_z, 1e-10)
+  Phi_z <- pmin(Phi_z, 1 - 1e-10)
 
-  phi_z <- pmax(phi_z, 1e-6)
-  phi_z <- pmin(phi_z, 1 - 1e-6)
+  phi_z <- pmax(phi_z, 1e-10)
+  phi_z <- pmin(phi_z, 1 - 1e-10)
 
   one_minus_Phi_z <- 1 - Phi_z
 

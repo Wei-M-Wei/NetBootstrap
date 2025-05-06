@@ -813,6 +813,26 @@ analytical_corrected = function(y, X, N, index, data, link = 'probit', L = L, be
     se_another[index_covariate] = sqrt(solve(W_hat_another)/(N*(N-1)))
   }
 
+
+  data_2 <- data_in
+  formula <- as.formula( paste("y ~ -1 +", paste(colnames(data_2[,-seq(2,K+1,1)])[-1], collapse = " + "), "+ offset(offset_term)"))
+  data_2$offset_term <- estimate_analytical * X_design[,1:K]
+  model_j_2 <-
+    glm(formula = formula, data = data_2, family=binomial(link = 'probit'))
+  fit_j_2 = summary(model_j_2)
+  estimate_analytical = c(estimate_analytical, NA, unlist(as.list(fit_j_2$coefficients[, 1])))
+  estimate_analytical[K+1] = sum(estimate_analytical[(N+K+1):(N+N+K)]) - sum(estimate_analytical[(K+2):(N+K)])
+
+  data_2 <- data_in
+  formula <- as.formula( paste("y ~ -1 +", paste(colnames(data_2[,-seq(2,K+1,1)])[-1], collapse = " + "), "+ offset(offset_term)"))
+  data_2$offset_term <- estimate_analytical_another * X_design[,1:K]
+  model_j_2 <-
+    glm(formula = formula, data = data_2, family=binomial(link = 'probit'))
+  fit_j_2 = summary(model_j_2)
+  estimate_analytical_another = c(estimate_analytical_another, NA, unlist(as.list(fit_j_2$coefficients[, 1])))
+  estimate_analytical_another[K+1] = sum(estimate_analytical_another[(N+K+1):(N+N+K)]) - sum(estimate_analytical[(K+2):(N+K)])
+
+
   res = list(est = estimate_analytical, se = se, se_no_MLE = se_no_MLE,est_another = estimate_analytical_another, se_another = se_another)
   return(res)
 
