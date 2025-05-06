@@ -608,13 +608,14 @@ compute_derivatives <- function(eta, y, X, model = 'probit') {
   phi_z[row(phi_z) == col(phi_z)] = 0
 
   # Avoid division by 0
-  Phi_z <- pmax(Phi_z, 1e-10)
-  Phi_z <- pmin(Phi_z, 1 - 1e-9)
+  Phi_z <- pmax(Phi_z, 1e-6)
+  Phi_z <- pmin(Phi_z, 1 - 1e-6)
 
-  phi_z <- pmax(phi_z, 1e-10)
-  phi_z <- pmin(phi_z, 1 - 1e-9)
+  phi_z <- pmax(phi_z, 1e-6)
+  phi_z <- pmin(phi_z, 1 - 1e-6)
 
-  one_minus_Phi_z <- pmax(1 - Phi_z, 1e-10)
+  one_minus_Phi_z <- 1 - Phi_z
+
   dd_F_fix = - eta * phi_z
   ddd_F_fix = eta^2 * phi_z - phi_z
 
@@ -625,6 +626,7 @@ compute_derivatives <- function(eta, y, X, model = 'probit') {
   term1 <- y * ((-z * phi_z) / Phi_z - (phi_z^2) / (Phi_z^2))
   term2 <- (1 - y) * ((-z * phi_z) / one_minus_Phi_z + (phi_z^2) / (one_minus_Phi_z^2))
   score2 <- term1 - term2
+  score2 <- pmin(score2, 0)
 
   # Third derivative w.r.t. z
   term1 = y * ( (ddd_F_fix*Phi_z - phi_z*dd_F_fix) / Phi_z^2  - (2*phi_z * dd_F_fix * Phi_z^2 - 2 * Phi_z * phi_z^3) / Phi_z^4   )

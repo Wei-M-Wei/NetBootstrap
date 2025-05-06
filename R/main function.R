@@ -194,7 +194,7 @@ network_bootstrap = function(y, X, N, bootstrap_time, index, data, link = 'probi
     Y = as.numeric(X_design %*% cof > epsi_it)
     data_boostrap <- data.frame(y = Y, X = X_design)
     model_B <-
-      speedglm(y ~ . - 1, data = data_boostrap, family = binomial(link = link), start = cof)
+      speedglm(y ~ . - 1, data = data_boostrap, family = binomial(link = link))
     fit_B = summary(model_B)
     cof_B = rbind(cof_B, unlist(as.list(fit_B$coefficients[, 1])))
     log_likelihood_estimate_B <- rbind(log_likelihood_estimate_B, logLik(model_B))
@@ -206,7 +206,7 @@ network_bootstrap = function(y, X, N, bootstrap_time, index, data, link = 'probi
       formula <- as.formula( paste("y ~ -1 +", paste(colnames(data_2[,-2])[-1], collapse = " + "), "+ offset(offset_term)"))
       data_2$offset_term <- cof[1] * X_design[,1]
       model_B_NULL <-
-        speedglm(formula = formula, data = data_2, family=binomial(link = link), start = cof[-1])
+        speedglm(formula = formula, data = data_2, family=binomial(link = link))
       fit_B_NULL = summary(model_B_NULL)
       cof_B_NULL = rbind(cof_B_NULL, c(beta_NULL, NA, unlist(as.list(fit_B_NULL$coefficients[, 1]))))
       log_likelihood_estimate_B_NULL <- rbind(log_likelihood_estimate_B_NULL, logLik(model_B_NULL))
@@ -454,10 +454,15 @@ split_jackknife = function(y, X, N, index, data, link = 'probit', beta_NULL = NU
   # W_hat
   x1 = matrix_to_panel_df(d_beta_fix_loss)
   x2 = matrix_to_panel_df(d_fix_fix_loss)
+  d_fix_fix_loss[which(is.na(d_fix_fix_loss)==TRUE)]
+  d_fix_fix_loss[which(d_fix_fix_loss>0)]
   to_in = x1$X/x2$X
   to_in[is.nan(to_in)] <- 0
   weight = -x2$X
+  which(weight<0)
+  weight[which(weight<0)]
   weight[which(weight==0)] = 1
+  weight[which(is.na(weight)==TRUE)]
   re = get_weighted_projection_fitted_exclude_t_eq_i(to_in, weight, x1$id, x1$time)
   re_matrix = matrix(re, N-1, N)
   re_matrix = shift_lower_triangle_and_add_zero_diag(re_matrix)
