@@ -3,6 +3,7 @@
 export(APE_se)
 export(analytical_Amrei)
 export(analytical_corrected)
+export(get_APE_analytical)
 export(get_APE_bootstrap)
 export(network_bootstrap)
 export(se_formula)
