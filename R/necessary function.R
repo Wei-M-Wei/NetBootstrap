@@ -578,6 +578,11 @@ se_formula_corrected = function(y, X, N, data, index, est, model = 'probit'){
 
 
 vector_to_matrix <- function(v, N, ind1, ind2) {
+
+
+  ind1 <- match(ind1, sort(unique(ind1)))
+  ind2 <- match(ind2, sort(unique(ind2)))
+
   # Determine matrix size
   nrow <- N
   ncol <- N
@@ -772,3 +777,4 @@ matrix_to_panel_df <- function(X_mat) {
   # Return data frame
   return(data.frame(id = id, time = time, X = X_vec))
 }
+
