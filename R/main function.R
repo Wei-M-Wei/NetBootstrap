@@ -822,7 +822,7 @@ analytical_corrected = function(y, X, N, index, data, link = 'probit', L = 1, be
 get_APE_bootstrap <- function(y, X, N, data, fit, model = 'probit'){
   cof_estimate = fit$est_bootstrap_all[,1]
   eta = fit$eta
-  eta_MLE = fit$eta_MLE
+  eta_MLE = t(fit$eta_MLE)
   cof_MLE = fit$est_MLE[1]
   APE_estimate = matrix(0,length(cof_estimate), N*(N-1))
   if (is.numeric(X) && length(unique(X)) == 2) {
