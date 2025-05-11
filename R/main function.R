@@ -232,15 +232,15 @@ network_bootstrap = function(y, X, N, bootstrap_time, index, data, link = 'probi
 
 
   if(is.null(beta_NULL) != 1){
-    res = list(cof_MLE = cof, cof_mean = est_correct_mean, cof_median = est_correct_median, sd = boostrap_sd,
-               cof_bootstrap_all = cof_B, cof_MLE_NULL = cof_NULL, cof_bootstrap_NULL = cof_B_NULL,
+    res = list(est_MLE = cof, est_mean = est_correct_mean, est_median = est_correct_median, sd = boostrap_sd,
+               est_bootstrap_all = cof_B, cof_MLE_NULL = cof_NULL, cof_bootstrap_NULL = cof_B_NULL,
                log_likelihood_MLE = log_likelihood_estimate, log_likelihood_Bootstrap = log_likelihood_estimate_B,
                log_likelihood_MLE_NULL = log_likelihood_estimate_NULL, log_likelihood_Bootstrap_NULL = log_likelihood_estimate_B_NULL,
                Hessian_MLE = Hessian_inv, Hessian_MLE_NULL = Hessian_inv_NULL, X_origin = as.matrix(X_design), eta = eta, eta_MLE = eta_MLE, data = data
     )
   }
   else{
-    res = list(cof_MLE = cof, cof_mean = est_correct_mean, cof_median = est_correct_median, sd = boostrap_sd, cof_bootstrap_all = cof_B,
+    res = list(est_MLE = cof, est_mean = est_correct_mean, est_median = est_correct_median, sd = boostrap_sd, est_bootstrap_all = cof_B,
                log_likelihood_MLE = log_likelihood_estimate, log_likelihood_Bootstrap = log_likelihood_estimate_B,
                Hessian_MLE = Hessian_inv, X_origin = as.matrix(X_design), eta = eta, eta_MLE = eta_MLE, data = data
     )
@@ -533,22 +533,22 @@ split_jackknife = function(y, X, N, index, data, link = 'probit', beta_NULL = NU
   }
 
   if(is.null(beta_NULL) != 1){
-    res = list(cof_jack = estimate_jack, cof_MLE = cof, cof_jack_NULL = cof_constrain_j, cof_jack_all = cof_jack_all,
+    res = list(est = estimate_jack, est_MLE = cof, est_jackknife_NULL = cof_constrain_j, est_jackknife_all = cof_jack_all,
                log_likelihood_jack = log_likelihood_j,
                log_likelihood_jack_NULL = log_likelihood_constrain_j,
                Hessian_jack = Hessian_inv_1_j, Hessian_jack_NULL = Hessian_inv_2_constrain_j, X_origin = as.matrix(X_save),
                eta = eta, eta_MLE = eta_MLE,
-               se = se, se_no_MLE = se_no_MLE,
-               se_corrected = se_corrected,
+               se_no_MLE = se_no_MLE,
+               se = se_corrected, se_formula = se,
                se_huges = se_huges, se_huges_no_MLE = se_huges_no_MLE
     )
   }else{
-    res = list(cof_jack = estimate_jack, cof_MLE = cof, cof_jack_all = cof_jack_all,
+    res = list(est = estimate_jack, est_MLE = cof, est_jackknife_all = cof_jack_all,
                log_likelihood_jack = log_likelihood_j,
                Hessian_jack = Hessian_inv_1_j, X_origin = as.matrix(X_save),
                eta = eta, eta_MLE = eta_MLE,
-               se = se, se_no_MLE = se_no_MLE,
-               se_corrected = se_corrected,
+               se_no_MLE = se_no_MLE,
+               se = se_corrected, se_formula = se,
                se_huges = se_huges, se_huges_no_MLE = se_huges_no_MLE
     )
   }
@@ -582,7 +582,7 @@ analytical_Amrei = function(y, X, N, index, data, link = 'probit', L = 1, beta_N
     y = data$y
     X = data[,colnames(X)]
   }
-  mod <- feglm(y ~ X | index.1 + index.2, data = data, family = binomial(link))
+  mod <- alpaca::feglm(y ~ X | index.1 + index.2, data = data, family = binomial(link))
   return(est = summary(biasCorr(mod, L = L, panel.structure = c( "network"))))
 
 }
@@ -811,8 +811,8 @@ analytical_corrected = function(y, X, N, index, data, link = 'probit', L = L, be
   eta = estimate_analytical_another %*% t(X_design)
   eta_MLE = cof %*% t(X_design)
 
-  res = list(est = estimate_analytical, se = se, se_no_MLE = se_no_MLE,
-             est_corrected = estimate_analytical_another, se_corrected = se_another,
+  res = list(est = estimate_analytical_another, se = se_another, se_formula = se, se_no_MLE = se_no_MLE,
+             est_formula = estimate_analytical,
              eta = eta, eta_MLE = eta_MLE, est_MLE = cof)
   return(res)
 
@@ -820,10 +820,10 @@ analytical_corrected = function(y, X, N, index, data, link = 'probit', L = L, be
 
 #' @export
 get_APE_bootstrap <- function(y, X, N, data, fit, model = 'probit'){
-  cof_estimate = fit$cof_bootstrap_all[,1]
+  cof_estimate = fit$est_bootstrap_all[,1]
   eta = fit$eta
   eta_MLE = fit$eta_MLE
-  cof_MLE = fit$cof_MLE[1]
+  cof_MLE = fit$est_MLE[1]
   APE_estimate = matrix(0,length(cof_estimate), N*(N-1))
   if (is.numeric(X) && length(unique(X)) == 2) {
     X_max = max(unique(X))
@@ -848,7 +848,7 @@ get_APE_bootstrap <- function(y, X, N, data, fit, model = 'probit'){
 
 #' @export
 get_APE_analytical<- function(y, X, N, data, index, fit, model = 'probit'){
-  cof_estimate = fit$est_corrected[1]
+  cof_estimate = fit$est[1]
   cof_estimate_MLE = fit$est_MLE[1]
   eta = t(fit$eta)
   eta_MLE = t(fit$eta_MLE)
@@ -953,15 +953,15 @@ get_APE_analytical<- function(y, X, N, data, index, fit, model = 'probit'){
   part_2 = compute_sum(APE_residual)
   part_3 = sum(tau*tau) - sum(diag(tau*tau))
   se = sqrt((part_1 + part_2 + part_3)/(N^2*(N-1)^2))
-  res = list(APE_MLE = mean(APE_estimate_MLE), APE_analytical = APE_analytical, se = se)
+  res = list(APE_MLE = mean(APE_estimate_MLE), APE = APE_analytical, se = se)
 
   return(res)
 
 }
 
 get_APE_jackknife<- function(y, X, N, index, data, fit, model = 'probit'){
-  cof_estimate = fit$cof_jack_all[,1]
-  cof_estimate_MLE = fit$cof_MLE[1]
+  cof_estimate = fit$est_jackknife_all[,1]
+  cof_estimate_MLE = fit$est_MLE[1]
   eta = t(fit$eta)
   eta_MLE = t(fit$eta_MLE)
   if (is.numeric(X) && length(unique(X)) == 2) {

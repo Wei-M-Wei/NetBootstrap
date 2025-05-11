@@ -778,3 +778,56 @@ matrix_to_panel_df <- function(X_mat) {
   return(data.frame(id = id, time = time, X = X_vec))
 }
 
+compute_B_hat <- function(D, E, B, C, L) {
+  N <- nrow(D)
+  result <- 0
+
+  for (i in 1:N) {
+    sum_l_term <- 0
+    for (l in 0:L) {
+      coeff <- N / (N - l)
+      for (j in (l + 1):N) {
+        if (j != i && j != (l + i)) {
+          d_index <- j - l
+          if (d_index >= 1 && d_index <= N) {
+            sum_l_term <- sum_l_term + coeff * D[i, d_index] * E[i, j]
+          }
+        }
+      }
+    }
+
+    sum_B <- sum(B[i, -i])       # exclude j == i
+    sum_C <- sum(C[i, -i])       # exclude j == i
+
+    result <- result + (sum_l_term + sum_B) / sum_C
+  }
+
+  return(result)
+}
+
+compute_B_hat_another <- function(D, E, B, C, L) {
+  N <- nrow(D)
+  result <- 0
+
+  for (i in 1:N) {
+    sum_l_term <- 0
+    for (l in 1:L) {
+      coeff <- N / (N - l)
+      for (j in (l + 1):N) {
+        if (j != i && j != (l + i)) {
+          d_index <- j - l
+          if (d_index >= 1 && d_index <= N) {
+            sum_l_term <- sum_l_term + coeff * D[i, d_index] * E[i, j]
+          }
+        }
+      }
+    }
+
+    sum_B <- sum(B[i, -i])       # exclude j == i
+    sum_C <- sum(C[i, -i])       # exclude j == i
+
+    result <- result + (sum_l_term + sum_B) / sum_C
+  }
+
+  return(result)
+}
