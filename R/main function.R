@@ -959,6 +959,7 @@ get_APE_analytical<- function(y, X, N, data, index, fit, model = 'probit'){
 
 }
 
+#' @export
 get_APE_jackknife<- function(y, X, N, index, data, fit, model = 'probit'){
   cof_estimate = fit$est_jackknife_all[,1]
   cof_estimate_MLE = fit$est_MLE[1]
