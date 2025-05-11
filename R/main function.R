@@ -589,7 +589,7 @@ analytical_Amrei = function(y, X, N, index, data, link = 'probit', L = 1, beta_N
 
 
 #' @export
-analytical_corrected = function(y, X, N, index, data, link = 'probit', L = L, beta_NULL = NULL){
+analytical_corrected = function(y, X, N, index, data, link = 'probit', L = 1, beta_NULL = NULL){
 
   ##################
   # part of estimate
@@ -847,7 +847,7 @@ get_APE_bootstrap <- function(y, X, N, data, fit, model = 'probit'){
 }
 
 #' @export
-get_APE_analytical<- function(y, X, N, data, index, fit, model = 'probit'){
+get_APE_analytical<- function(y, X, N, data, index, fit, L = 1, model = 'probit'){
   cof_estimate = fit$est[1]
   cof_estimate_MLE = fit$est_MLE[1]
   eta = t(fit$eta)
@@ -960,7 +960,7 @@ get_APE_analytical<- function(y, X, N, data, index, fit, model = 'probit'){
 }
 
 #' @export
-get_APE_jackknife<- function(y, X, N, index, data, fit, model = 'probit'){
+get_APE_jackknife<- function(y, X, N, index, data, fit, L = 1, model = 'probit'){
   cof_estimate = fit$est_jackknife_all[,1]
   cof_estimate_MLE = fit$est_MLE[1]
   eta = t(fit$eta)
