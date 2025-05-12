@@ -409,76 +409,26 @@ split_jackknife = function(y, X, N, index, data, link = 'probit', beta_NULL = NU
   cov_sum[row(cov_sum) == col(cov_sum)] = 0
   X_to = as.matrix(X)
   y_to = y
-  se = rep(0,K)
-  se_huges = rep(0,K)
-  se_no_MLE = rep(0, K)
-  se_huges_no_MLE = rep(0, K)
-  est_another = rep(0, K)
   se_corrected = rep(0, K)
+  tilde_X_list <- vector("list", K)
+  W_hat_another <- matrix(0, nrow = K, ncol = K)
 
   for (index_covariate in 1:K) {
 
     # X is a matrix of a single covariate, and the same for y
-    X = vector_to_matrix(X_to[,index_covariate], N, ind1 = data_j[,index[1]], ind2 = data_j[,index[2]])
-    y = vector_to_matrix(y_to, N, ind1 = data_j[,index[1]], ind2 = data_j[,index[2]])
+    X = vector_to_matrix(X_to[,index_covariate], N, ind1 = data[,index[1]], ind2 = data[,index[2]])
+    y = vector_to_matrix(y_to, N, ind1 = data[,index[1]], ind2 = data[,index[2]])
     y[row(y) == col(y)] = 0
 
-    # CDF (Φ(Xβ)) and PDF (φ(Xβ))
-    Phi_XB <- pnorm(cov_sum)
-    phi_XB <- dnorm(cov_sum)
+
+    Phi_XB <- pnorm(cov_sum)  # CDF (Φ(Xβ))
+    phi_XB <- dnorm(cov_sum)  # PDF (φ(Xβ))
     dd_F_fix = -cov_sum * phi_XB
+    ddd_F_fix = cov_sum^2 * phi_XB - phi_XB
     Phi_XB[row(Phi_XB) == col(Phi_XB)] = 0
     phi_XB[row(phi_XB) == col(phi_XB)] = 0
     Phi_XB <- pmax(Phi_XB, 1e-9)
     Phi_XB <- pmin(Phi_XB, 1 - 1e-9)
-
-    derivative_ingredients = compute_derivatives(eta = cov_sum, y = y, X = X)
-
-    # preparation for ingredients
-    d_fix_loss =  derivative_ingredients$d_fix_loss
-    d_beta_loss = derivative_ingredients$d_beta_loss
-    d_fix_fix_loss = derivative_ingredients$d_fix_fix_loss# d_beta_loss = X * (y - exp(cov_sum)/( 1 + exp(cov_sum)))
-    d_beta_beta_loss = derivative_ingredients$d_beta_beta_loss# d_beta_fix_loss = X * ( - exp(cov_sum)/( 1 + exp(cov_sum))^2)
-    d_beta_fix_loss = derivative_ingredients$d_beta_fix_loss
-
-    # one way to calculate the se by formula
-    # Hessian matrix
-    H_a_a = matrix(0, N, N)
-    H_g_g = matrix(0, N, N)
-    for (i in 1:N) {
-      H_a_a[i, i] <- -(sum(d_fix_fix_loss[i, ]) - d_fix_fix_loss[i, i])/(N-1)  # sum of off-diagonal elements in row i
-    }
-    for (i in 1:N) {
-      H_g_g[i, i] <- -(sum(d_fix_fix_loss[-i, i]))/(N-1) # sum of off-diagonal elements in row i
-    }
-    H_a_g = -d_fix_fix_loss/((N-1))
-
-    Hessian_bar =   cbind(rbind(H_a_a, t(H_a_g)), rbind(H_a_g, H_g_g))  + c(rep(1,N), rep(-1,N)) %*% t( c(rep(1,N), rep(-1,N)) )/N
-    Hessain_inverse = solve(Hessian_bar)
-    Hessian_a_a = Hessain_inverse[1:(N), 1:(N)]
-    Hessian_g_a = Hessain_inverse[(N+1):(N+N), 1:(N)]
-    Hessian_a_g = Hessain_inverse[1:(N), (N+1):(N+N)]
-    Hessian_g_g = Hessain_inverse[(N+1):(N+N), (N+1):(N+N)]
-
-    # matrix 'Xi'
-    the = matrix(0, N, N)
-    for (i in 1:N) {
-      for (j in 1:N) {
-        temp_sum <- 0
-        for (s in 1:N) {
-          for (t in 1:N) {
-            if (t != s) {
-              temp_sum <- temp_sum + (-1/(N)) * (Hessian_a_a[i, s] + Hessian_g_a[j, s] + Hessian_a_g[i, t] + Hessian_g_g[j, t]) * d_beta_fix_loss[s, t]
-            }
-          }
-        }
-        the[i, j] <- temp_sum
-      }
-    }
-
-    # W_hat based on Iva ́ n2016
-    W_hat =   -(1 / ((N-1)*N)) * (sum(  d_beta_beta_loss  - d_fix_fix_loss * the * the  ) - sum(diag(d_beta_beta_loss  - d_fix_fix_loss * the * the )) ) # -(1 / N) * (  d_beta_beta_big_loss  - d_beta_fix_big_loss * solve(d_fix_2_big_loss) * d_beta_fix_big_loss  )
-
 
 
     #### Another way to calculate the bias corrected
@@ -493,63 +443,39 @@ split_jackknife = function(y, X, N, index, data, link = 'probit', beta_NULL = NU
     re = get_weighted_projection_fitted_exclude_t_eq_i(X_into$X, weight, X_into$id, X_into$time)
     re_matrix = matrix(re, N-1, N)
     re_matrix = shift_lower_triangle_and_add_zero_diag(re_matrix)
-    tilde_X = X - re_matrix
-    W_hat_another =   (1 / ((N-1)*N)) * (sum(  small_w  * tilde_X  * tilde_X   ) - sum(diag( small_w  * tilde_X  * tilde_X  )) ) # -(1 / N) * (  d_beta_beta_big_loss  - d_beta_fix_big_loss * solve(d_fix_2_big_loss) * d_beta_fix_big_loss  )
-
-
-    # Omega_hat based on Iva ́ n2016
-    D_beta_loss = d_beta_loss - d_fix_loss*the
-    Omega_hat <- 0
-    for (i in 1:N) {
-      for (j in setdiff(1:N, i)) {
-        for (k in setdiff(1:N, i)) {
-          Omega_hat <- Omega_hat + D_beta_loss[i, j] * D_beta_loss[i, k]/(N*(N-1))
-        }
-      }
-    }
-
-
-    # the third way to calculate se, which is based on huges paper
-    # matrix from huges
-    d_beta_beta_big_loss = (1/(N-1))*(sum(d_beta_beta_loss) - sum(diag(d_beta_beta_loss)))
-    d_beta_fix_big_loss = (1/(N-1))*(sum(d_beta_fix_loss) - sum(diag(d_beta_fix_loss)))
-    d_fix_beta_big_loss = (1/(N-1))*(sum(d_beta_fix_loss) - sum(diag(d_beta_fix_loss)))
-    d_fix_2_big_loss = (1/(N-1))*(sum(d_fix_fix_loss) - sum(diag(d_fix_fix_loss)))
-
-    # W_hat huges
-    W_hat_huges =   -(1 / N) * (  d_beta_beta_big_loss  - d_beta_fix_big_loss * solve(d_fix_2_big_loss) * d_beta_fix_big_loss  )
-    D_beta_loss = d_beta_loss - d_fix_loss*the
-    A = (D_beta_loss + t(D_beta_loss))^2
-
-    # Omega_hat
-    Omega_hat_huges =  1/(N*(N-1))* sum(A[lower.tri(A)])
-
-    se[index_covariate] = sqrt(solve(W_hat)/(N*(N-1)))
-    se_no_MLE[index_covariate] = sqrt(solve(W_hat) * Omega_hat * solve(W_hat)/(N*(N-1)))
-    se_corrected[index_covariate] = sqrt(solve(W_hat_another)/(N*(N-1)))
-    se_huges[index_covariate] = sqrt(solve(W_hat_huges)/(N*(N-1)))
-    se_huges_no_MLE[index_covariate] = sqrt(solve(W_hat_huges) * Omega_hat_huges * solve(W_hat_huges)/(N*(N-1)))
-
+    tilde_X_list[[index_covariate]] = X - re_matrix
+    D_hat_another[index_covariate,] = -(0.5 / (N-1)) * sum(colSums((H * dd_F_fix * tilde_X_list[[index_covariate]]) * (1 - diag(N))) / colSums(small_w * (1 - diag(N))))
+    B_hat_another[index_covariate,] = -(0.5/N) * compute_B_hat_another(2* H * (y - Phi_XB), small_w * tilde_X_list[[index_covariate]], H * dd_F_fix * tilde_X_list[[index_covariate]], small_w, L)
   }
+
+  tilde_X_array <- array(unlist(tilde_X_list), dim = c(N, N, K))
+
+  # Step 4: Initialize sum matrix for outer products
+  W_hat_another <- matrix(0, nrow = K, ncol = K)
+
+  # Step 5: For each position (i, j), extract vector and compute outer product
+  for (i in 1:N) {
+    for (j in 1:N) {
+      if(j!=i)
+        v_ij <- tilde_X_array[i, j, ]             # Vector of length p
+      W_hat_another <- W_hat_another + (1 / ((N-1)*N)) * small_w[i,j] * v_ij %*% t(v_ij)  # Outer product and sum
+    }
+  }
+
+  se_corrected = sqrt( diag(solve(W_hat_another))/(N*(N-1)) )
 
   if(is.null(beta_NULL) != 1){
     res = list(est = estimate_jack, est_MLE = cof, est_jackknife_NULL = cof_constrain_j, est_jackknife_all = cof_jack_all,
                log_likelihood_jack = log_likelihood_j,
                log_likelihood_jack_NULL = log_likelihood_constrain_j,
                Hessian_jack = Hessian_inv_1_j, Hessian_jack_NULL = Hessian_inv_2_constrain_j, X_origin = as.matrix(X_save),
-               eta = eta, eta_MLE = eta_MLE,
-               se_no_MLE = se_no_MLE,
-               se = se_corrected, se_formula = se,
-               se_huges = se_huges, se_huges_no_MLE = se_huges_no_MLE
+               eta = eta, eta_MLE = eta_MLE, se = se_corrected
     )
   }else{
     res = list(est = estimate_jack, est_MLE = cof, est_jackknife_all = cof_jack_all,
                log_likelihood_jack = log_likelihood_j,
                Hessian_jack = Hessian_inv_1_j, X_origin = as.matrix(X_save),
-               eta = eta, eta_MLE = eta_MLE,
-               se_no_MLE = se_no_MLE,
-               se = se_corrected, se_formula = se,
-               se_huges = se_huges, se_huges_no_MLE = se_huges_no_MLE
+               eta = eta, eta_MLE = eta_MLE, se = se_corrected
     )
   }
   return(res)
@@ -670,8 +596,10 @@ analytical_corrected = function(y, X, N, index, data, link = 'probit', L = 1, be
   se_no_MLE = rep(0, K)
   est_another = rep(0, K)
   se_another = rep(0, K)
-
-
+  tilde_X_list <- vector("list", K)
+  W_hat_another <- matrix(0, nrow = K, ncol = K)
+  B_hat_another = matrix(0, nrow = K, ncol = 1)
+  D_hat_another = matrix(0, nrow = K, ncol = 1)
   for (index_covariate in 1:K) {
 
     # X is a matrix of a single covariate, and the same for y
@@ -689,70 +617,6 @@ analytical_corrected = function(y, X, N, index, data, link = 'probit', L = 1, be
     Phi_XB <- pmax(Phi_XB, 1e-9)
     Phi_XB <- pmin(Phi_XB, 1 - 1e-9)
 
-    derivative_ingredients = compute_derivatives(eta = cov_sum, y = y, X = X)
-
-    # preparation for ingredients
-    d_fix_loss =  derivative_ingredients$d_fix_loss
-    d_beta_loss = derivative_ingredients$d_beta_loss
-    d_fix_fix_loss = derivative_ingredients$d_fix_fix_loss# d_beta_loss = X * (y - exp(cov_sum)/( 1 + exp(cov_sum)))
-    d_beta_beta_loss = derivative_ingredients$d_beta_beta_loss# d_beta_fix_loss = X * ( - exp(cov_sum)/( 1 + exp(cov_sum))^2)
-    d_beta_fix_loss = derivative_ingredients$d_beta_fix_loss
-    d_fix_fix_fix_loss = derivative_ingredients$d_fix_fix_fix_loss
-    d_beta_fix_fix_loss = derivative_ingredients$d_beta_fix_fix_loss
-
-    # one way to calculate se based on formula
-
-    # Hessian matrix
-    H_a_a = matrix(0, N, N)
-    H_g_g = matrix(0, N, N)
-    for (i in 1:N) {
-      H_a_a[i, i] <- -(sum(d_fix_fix_loss[i, ]) - d_fix_fix_loss[i, i])/(N-1)  # sum of off-diagonal elements in row i
-    }
-    for (i in 1:N) {
-      H_g_g[i, i] <- -(sum(d_fix_fix_loss[-i, i]))/(N-1) # sum of off-diagonal elements in row i
-    }
-    H_a_g = -d_fix_fix_loss/((N-1))
-
-    Hessian_bar =   cbind(rbind(H_a_a, t(H_a_g)), rbind(H_a_g, H_g_g))  + c(rep(1,N), rep(-1,N)) %*% t( c(rep(1,N), rep(-1,N)) )/N
-    Hessain_inverse = solve(Hessian_bar)
-    Hessian_a_a = Hessain_inverse[1:(N), 1:(N)]
-    Hessian_g_a = Hessain_inverse[(N+1):(N+N), 1:(N)]
-    Hessian_a_g = Hessain_inverse[1:(N), (N+1):(N+N)]
-    Hessian_g_g = Hessain_inverse[(N+1):(N+N), (N+1):(N+N)]
-
-    # matrix 'Xi'
-    the = matrix(0, N, N)
-    for (i in 1:N) {
-      for (j in 1:N) {
-        temp_sum <- 0
-        for (s in 1:N) {
-          for (t in 1:N) {
-            if (t != s) {
-              temp_sum <- temp_sum + (-1/(N)) * (Hessian_a_a[i, s] + Hessian_g_a[j, s] + Hessian_a_g[i, t] + Hessian_g_g[j, t]) * d_beta_fix_loss[s, t]
-            }
-          }
-        }
-        the[i, j] <- temp_sum
-      }
-    }
-
-    # W_hat based on Iva ́ n2016
-    D_beta_loss = d_beta_loss - d_fix_loss * the
-    D_beta_fix_loss = d_beta_fix_loss - d_fix_fix_loss * the
-    D_beta_fix_fix_loss = d_beta_fix_fix_loss - d_fix_fix_fix_loss * the
-
-    W_hat =   -(1 / ((N-1)*N)) * (sum(  d_beta_beta_loss  - d_fix_fix_loss * the * the  ) - sum(diag(d_beta_beta_loss  - d_fix_fix_loss * the * the )) ) # -(1 / N) * (  d_beta_beta_big_loss  - d_beta_fix_big_loss * solve(d_fix_2_big_loss) * d_beta_fix_big_loss  )
-    B_hat = -(1/N) * compute_B_hat(d_fix_loss, D_beta_fix_loss, 0.5 * D_beta_fix_fix_loss, d_fix_fix_loss, L)
-    D_hat = -(1 / (N-1)) * sum(colSums((d_fix_loss * D_beta_fix_loss + 0.5 * D_beta_fix_fix_loss) * (1 - diag(N))) / colSums(d_fix_fix_loss * (1 - diag(N))))
-    Omega_hat <- 0
-    for (i in 1:N) {
-      for (j in setdiff(1:N, i)) {
-        for (k in setdiff(1:N, i)) {
-          Omega_hat <- Omega_hat + D_beta_loss[i, j] * D_beta_loss[i, k]/(N*(N-1))
-        }
-      }
-    }
-
 
     #### Another way to calculate the bias corrected
     # another way to calculate the analytical corrected estimate
@@ -766,33 +630,29 @@ analytical_corrected = function(y, X, N, index, data, link = 'probit', L = 1, be
     re = get_weighted_projection_fitted_exclude_t_eq_i(X_into$X, weight, X_into$id, X_into$time)
     re_matrix = matrix(re, N-1, N)
     re_matrix = shift_lower_triangle_and_add_zero_diag(re_matrix)
-    tilde_X = X - re_matrix
-    W_hat_another =   (1 / ((N-1)*N)) * (sum(  small_w  * tilde_X  * tilde_X   ) - sum(diag( small_w  * tilde_X  * tilde_X  )) ) # -(1 / N) * (  d_beta_beta_big_loss  - d_beta_fix_big_loss * solve(d_fix_2_big_loss) * d_beta_fix_big_loss
-    D_hat_another = -(0.5 / (N-1)) * sum(colSums((H * dd_F_fix * tilde_X) * (1 - diag(N))) / colSums(small_w * (1 - diag(N))))
-    B_hat_another = -(0.5/N) * compute_B_hat_another(2* H * (y - Phi_XB), small_w * tilde_X, H * dd_F_fix * tilde_X, small_w, L)
-
-
-    # estimate
-    estimate_analytical[index_covariate] = est[index_covariate] - solve(W_hat)*B_hat*(1/(N-1)) - solve(W_hat)*D_hat*(1/N)
-    estimate_analytical_another[index_covariate] = est[index_covariate] - solve(W_hat_another)*B_hat_another*(1/(N-1)) - solve(W_hat_another)*D_hat_another*(1/N)
-    se[index_covariate] = sqrt(solve(W_hat)/(N*(N-1)))
-    se_no_MLE[index_covariate] = sqrt(solve(W_hat) * Omega_hat * solve(W_hat)/(N*(N-1)))
-    se_another[index_covariate] = sqrt(solve(W_hat_another)/(N*(N-1)))
+    tilde_X_list[[index_covariate]] = X - re_matrix
+    D_hat_another[index_covariate,] = -(0.5 / (N-1)) * sum(colSums((H * dd_F_fix * tilde_X_list[[index_covariate]]) * (1 - diag(N))) / colSums(small_w * (1 - diag(N))))
+    B_hat_another[index_covariate,] = -(0.5/N) * compute_B_hat_another(2* H * (y - Phi_XB), small_w * tilde_X_list[[index_covariate]], H * dd_F_fix * tilde_X_list[[index_covariate]], small_w, L)
   }
 
-  # calculate the estimates of fixed effects based on the bias corrected beta
-  data_2 <- data_in
-  formula <- as.formula( paste("y ~ -1 +", paste(colnames(data_2[,-seq(2,K+1,1)])[-1], collapse = " + "), "+ offset(offset_term)"))
-  if( K != 1){
-    data_2$offset_term <-  as.vector(X_design[,1:K] %*% matrix(estimate_analytical))
-  }else{
-    data_2$offset_term <- as.vector(estimate_analytical * X_design[,1:K])
+  tilde_X_array <- array(unlist(tilde_X_list), dim = c(N, N, K))
+
+  # Step 4: Initialize sum matrix for outer products
+  W_hat_another <- matrix(0, nrow = K, ncol = K)
+
+  # Step 5: For each position (i, j), extract vector and compute outer product
+  for (i in 1:N) {
+    for (j in 1:N) {
+      if(j!=i){
+        v_ij <- tilde_X_array[i, j, ]             # Vector of length p
+        W_hat_another <- W_hat_another + (1 / ((N-1)*N)) * small_w[i,j] * v_ij %*% t(v_ij)  # Outer product and sum
+      }
+    }
   }
-  model_j_2 <-
-    speedglm(formula, data = data_2, family=binomial(link = 'probit'))
-  fit_j_2 = summary(model_j_2)
-  estimate_analytical = c(estimate_analytical, unlist(as.list(fit_j_2$coefficients[, 1])))
-  estimate_analytical[K+1] = sum(estimate_analytical[(N+K+1):(N+N+K)]) - sum(estimate_analytical[(K+2):(N+K)])
+
+  # estimate
+  estimate_analytical_another = est[1:K] - solve(W_hat_another)%*%B_hat_another*(1/(N-1)) - solve(W_hat_another)%*%D_hat_another*(1/N)
+  se_another =  sqrt( diag(solve(W_hat_another)) /(N*(N-1)) )
 
 
   data_2 <- data_in
@@ -800,19 +660,18 @@ analytical_corrected = function(y, X, N, index, data, link = 'probit', L = 1, be
   if( K != 1){
     data_2$offset_term <- as.vector(X_design[,1:K] %*% matrix(estimate_analytical_another))
   }else{
-    data_2$offset_term <- as.vector(estimate_analytical_another * X_design[,1:K])
+    data_2$offset_term <- as.vector(estimate_analytical_another %*% X_design[,1:K])
   }
   model_j_2 <-
     speedglm(formula = formula, data = data_2, family=binomial(link = 'probit'))
   fit_j_2 = summary(model_j_2)
   estimate_analytical_another = c(estimate_analytical_another, unlist(as.list(fit_j_2$coefficients[, 1])))
-  estimate_analytical_another[K+1] = sum(estimate_analytical_another[(N+K+1):(N+N+K)]) - sum(estimate_analytical[(K+2):(N+K)])
+  estimate_analytical_another[K+1] = sum(estimate_analytical_another[(N+K+1):(N+N+K)]) - sum(estimate_analytical_another[(K+2):(N+K)])
 
   eta = estimate_analytical_another %*% t(X_design)
   eta_MLE = cof %*% t(X_design)
 
-  res = list(est = estimate_analytical_another, se = se_another, se_formula = se, se_no_MLE = se_no_MLE,
-             est_formula = estimate_analytical,
+  res = list(est = estimate_analytical_another, se = se_another,
              eta = eta, eta_MLE = eta_MLE, est_MLE = cof)
   return(res)
 
@@ -820,205 +679,197 @@ analytical_corrected = function(y, X, N, index, data, link = 'probit', L = 1, be
 
 #' @export
 get_APE_bootstrap <- function(y, X, N, data, fit, model = 'probit'){
-  cof_estimate = fit$est_bootstrap_all[,1]
-  eta = fit$eta
-  eta_MLE = matrix(fit$eta_MLE)
-  cof_MLE = fit$est_MLE[1]
-  APE_estimate = matrix(0,length(cof_estimate), N*(N-1))
-  if (is.numeric(X) && length(unique(X)) == 2) {
-    X_max = max(unique(X))
-    X_min = min(unique(X))
-    APE_MLE_estimate = (pnorm(cof_MLE * X_max + eta_MLE - cof_MLE * X ) - pnorm(cof_MLE * X_min + eta_MLE - cof_MLE * X) ) / (X_max - X_min)
-    for (i in 1:length(cof_estimate)) {
-      APE_estimate[i,] = (pnorm(cof_estimate[i]* X_max + eta[i,] - cof_estimate[i] * X ) - pnorm(cof_estimate[i]* X_min + eta[i,] - cof_estimate[i] * X )) / (X_max - X_min)
-    }}else{
-      APE_MLE_estimate = cof_MLE * dnorm(eta_MLE)
+  K = dim(X)[2]
+  APE_MLE = rep(0 ,K)
+  APE_mean_bootstrap = rep(0 ,K)
+  APE_median_bootstrap = rep(0 ,K)
+  se = rep(0, K)
+  for (k in 1:K) {
+
+    cof_estimate = fit$est_bootstrap_all[,k]
+    eta = fit$eta
+    eta_MLE = matrix(fit$eta_MLE)
+    cof_MLE = fit$est_MLE[k]
+    APE_estimate = matrix(0,length(cof_estimate), N*(N-1))
+    if (is.numeric(X) && length(unique(X)) == 2) {
+      X_max = max(unique(X))
+      X_min = min(unique(X))
+      APE_MLE_estimate = (pnorm(cof_MLE * X_max + eta_MLE - cof_MLE * X ) - pnorm(cof_MLE * X_min + eta_MLE - cof_MLE * X) ) / (X_max - X_min)
       for (i in 1:length(cof_estimate)) {
-        APE_estimate[i,] = cof_estimate[i]* dnorm( eta[i,] )
+        APE_estimate[i,] = (pnorm(cof_estimate[i]* X_max + eta[i,] - cof_estimate[i] * X ) - pnorm(cof_estimate[i]* X_min + eta[i,] - cof_estimate[i] * X )) / (X_max - X_min)
+      }}else{
+        APE_MLE_estimate = cof_MLE * dnorm(eta_MLE)
+        for (i in 1:length(cof_estimate)) {
+          APE_estimate[i,] = cof_estimate[i]* dnorm( eta[i,] )
+        }
       }
-    }
-  APE = rowMeans(APE_estimate)
-  APE_MLE = mean(APE_MLE_estimate)
-  APE_mean_bootstrap = APE_MLE - (mean(APE) - APE_MLE)
-  APE_median_bootstrap = APE_MLE - (median(APE) - APE_MLE)
-  se = sd(APE)
+    APE = rowMeans(APE_estimate)
+    APE_MLE[k] = mean(APE_MLE_estimate)
+    APE_mean_bootstrap[k] = APE_MLE[k] - (mean(APE) - APE_MLE[k])
+    APE_median_bootstrap[k] = APE_MLE[k] - (median(APE) - APE_MLE[k])
+    se[k] = sd(APE)
+  }
   res = list(APE_MLE = APE_MLE, APE_mean_bootstrap = APE_mean_bootstrap, APE_median_bootstrap = APE_median_bootstrap, se = se)
   return(res)
 }
 
 #' @export
 get_APE_analytical<- function(y, X, N, data, index, fit, L = 1, model = 'probit'){
-  cof_estimate = fit$est[1]
-  cof_estimate_MLE = fit$est_MLE[1]
-  eta = t(fit$eta)
-  eta_MLE = matrix(fit$eta_MLE)
-  if (is.numeric(X) && length(unique(X)) == 2) {
-    X_max = as.numeric(max(unique(X)))
-    X_min = as.numeric(min(unique(X)))
-    APE_estimate = (pnorm(cof_estimate* X_max + eta - cof_estimate * X ) - pnorm(cof_estimate* X_min + eta - cof_estimate * X)) / (X_max - X_min)
-    d_APE_estimate = (dnorm(cof_estimate* X_max + eta - cof_estimate * X ) - dnorm(cof_estimate* X_min + eta - cof_estimate * X)) / (X_max - X_min)
-    dd_APE_estimate = (-(cof_estimate* X_max + eta - cof_estimate * X) * dnorm(cof_estimate* X_max + cof_estimate + eta - cof_estimate * X ) + (cof_estimate* X_min + eta - cof_estimate * X)  * dnorm(cof_estimate* X_min + eta - cof_estimate * X))/ (X_max - X_min)
+  K = dim(X)[2]
+  APE_MLE = rep(0, K)
+  APE_analytical = rep(0, K)
+  tilde_X_list <- vector("list", K)
+  tilde_Psi_list <- vector("list", K)
+  APE_MLE_list <- vector("list", K)
+  d_APE_MLE_list <- vector("list", K)
+  Psi_list = vector("list", K)
+  W_hat_another <- matrix(0, nrow = K, ncol = K)
+  B_hat_another = matrix(0, nrow = K, ncol = 1)
+  D_hat_another = matrix(0, nrow = K, ncol = 1)
+  X_to = X
+  y_to = y
 
-    APE_estimate_MLE = (pnorm(cof_estimate_MLE * X_max + eta_MLE - cof_estimate_MLE * X ) - pnorm(cof_estimate_MLE* X_min + eta_MLE - cof_estimate_MLE * X)) / (X_max - X_min)
-    d_APE_estimate_MLE = (dnorm(cof_estimate_MLE * X_max + eta_MLE - cof_estimate_MLE * X ) - dnorm(cof_estimate_MLE* X_min +eta_MLE - cof_estimate_MLE * X) ) / (X_max - X_min)
-    dd_APE_estimate_MLE = (-(cof_estimate_MLE * X_max + eta_MLE - cof_estimate_MLE * X) * dnorm(cof_estimate_MLE* X_max + eta_MLE - cof_estimate_MLE * X ) + (cof_estimate_MLE* X_min + eta_MLE - cof_estimate_MLE * X)  * dnorm(cof_estimate_MLE* X_min + eta_MLE - cof_estimate_MLE * X)) / (X_max - X_min)
+  for (k in 1:K) {
+    X = X_to[,k]
+    cof_estimate = fit$est[k]
+    cof_estimate_MLE = fit$est_MLE[k]
+    eta = t(fit$eta)
+    eta_MLE = t(fit$eta_MLE)
+    if (is.numeric(X) && length(unique(X)) == 2) {
+      X_max = as.numeric(max(unique(X)))
+      X_min = as.numeric(min(unique(X)))
+      APE_estimate = (pnorm(cof_estimate* X_max + eta - cof_estimate * X ) - pnorm(cof_estimate* X_min + eta - cof_estimate * X)) / (X_max - X_min)
+      d_APE_estimate = (dnorm(cof_estimate* X_max + eta - cof_estimate * X ) - dnorm(cof_estimate* X_min + eta - cof_estimate * X)) / (X_max - X_min)
+      dd_APE_estimate = (-(cof_estimate* X_max + eta - cof_estimate * X) * dnorm(cof_estimate* X_max + cof_estimate + eta - cof_estimate * X ) + (cof_estimate* X_min + eta - cof_estimate * X)  * dnorm(cof_estimate* X_min + eta - cof_estimate * X))/ (X_max - X_min)
 
-  }else{
-    APE_estimate = cof_estimate * dnorm(eta)
-    d_APE_estimate = cof_estimate * (-eta) * dnorm(eta)
-    dd_APE_estimate = cof_estimate*(- dnorm(eta) + eta^2 * dnorm(eta))
+      APE_estimate_MLE = (pnorm(cof_estimate_MLE * X_max + eta_MLE - cof_estimate_MLE * X ) - pnorm(cof_estimate_MLE* X_min + eta_MLE - cof_estimate_MLE * X)) / (X_max - X_min)
+      d_APE_estimate_MLE = (dnorm(cof_estimate_MLE * X_max + eta_MLE - cof_estimate_MLE * X ) - dnorm(cof_estimate_MLE* X_min +eta_MLE - cof_estimate_MLE * X) ) / (X_max - X_min)
+      dd_APE_estimate_MLE = (-(cof_estimate_MLE * X_max + eta_MLE - cof_estimate_MLE * X) * dnorm(cof_estimate_MLE* X_max + eta_MLE - cof_estimate_MLE * X ) + (cof_estimate_MLE* X_min + eta_MLE - cof_estimate_MLE * X)  * dnorm(cof_estimate_MLE* X_min + eta_MLE - cof_estimate_MLE * X)) / (X_max - X_min)
 
-    APE_estimate_MLE = cof_estimate_MLE * dnorm(eta_MLE)
-    d_APE_estimate_MLE = cof_estimate_MLE * (-eta_MLE) * dnorm(eta_MLE)
-    dd_APE_estimate_MLE = cof_estimate_MLE * (- dnorm(eta_MLE) + eta_MLE^2 * dnorm(eta_MLE))
+    }else{
+      APE_estimate = cof_estimate * dnorm(eta)
+      d_APE_estimate = cof_estimate * (-eta) * dnorm(eta)
+      dd_APE_estimate = cof_estimate*(- dnorm(eta) + eta^2 * dnorm(eta))
+
+      APE_estimate_MLE = cof_estimate_MLE * dnorm(eta_MLE)
+      d_APE_estimate_MLE = cof_estimate_MLE * (-eta_MLE) * dnorm(eta_MLE)
+      dd_APE_estimate_MLE = cof_estimate_MLE * (- dnorm(eta_MLE) + eta_MLE^2 * dnorm(eta_MLE))
+    }
+
+
+    index1 = data[,index[1]]
+    index2 = data[,index[2]]
+    new_index1 <- match(index1, sort(unique(index1)))
+    new_index2 <- match(index2, sort(unique(index2)))
+
+    data[,index[1]] =  new_index1
+    data[,index[2]] =  new_index2
+
+    X = vector_to_matrix(X, N, ind1 = data[,index[1]], ind2 = data[,index[2]])
+    y = vector_to_matrix(y_to, N, ind1 = data[,index[1]], ind2 = data[,index[2]])
+    APE_estimate = matrix(APE_estimate, N-1,N)
+    APE_estimate = shift_lower_triangle_and_add_zero_diag(APE_estimate)
+    d_APE_estimate = matrix(d_APE_estimate, N-1,N)
+    d_APE_estimate = shift_lower_triangle_and_add_zero_diag(d_APE_estimate)
+    dd_APE_estimate = matrix(dd_APE_estimate, N-1,N)
+    dd_APE_estimate = shift_lower_triangle_and_add_zero_diag(dd_APE_estimate)
+    APE_estimate_MLE = matrix(APE_estimate_MLE, N-1,N)
+    APE_estimate_MLE = shift_lower_triangle_and_add_zero_diag(APE_estimate_MLE)
+    d_APE_estimate_MLE = matrix(d_APE_estimate_MLE, N-1,N)
+    d_APE_estimate_MLE = shift_lower_triangle_and_add_zero_diag(d_APE_estimate_MLE)
+    dd_APE_estimate_MLE = matrix(dd_APE_estimate_MLE, N-1,N)
+    dd_APE_estimate_MLE = shift_lower_triangle_and_add_zero_diag(dd_APE_estimate_MLE)
+
+    APE_MLE_list[[k]] =  APE_estimate_MLE
+    d_APE_MLE_list[[k]] =  d_APE_estimate_MLE
+
+
+    y[row(y) == col(y)] = 0
+
+    cov_sum = matrix(eta_MLE, N-1,N)
+    cov_sum = shift_lower_triangle_and_add_zero_diag(cov_sum)
+    cov_sum[row(cov_sum) == col(cov_sum)] = 0
+
+    Phi_XB <- pnorm(cov_sum)  # CDF (Φ(Xβ))
+    phi_XB <- dnorm(cov_sum)  # PDF (φ(Xβ))
+
+    Phi_XB[row(cov_sum) == col(cov_sum)] = 0
+    phi_XB[row(cov_sum) == col(cov_sum)] = 0
+    Phi_XB <- pmax(Phi_XB, 1e-9)
+    Phi_XB <- pmin(Phi_XB, 1 - 1e-9)
+
+    dd_F_fix = -cov_sum * phi_XB
+    ddd_F_fix = cov_sum^2 * phi_XB - phi_XB
+
+    #### Another way to calculate the bias corrected
+    # another way to calculate the analytical corrected estimate
+    H = phi_XB/(Phi_XB*(1-Phi_XB))
+    small_w = H * phi_XB
+
+    # B_hat
+    X_into = matrix_to_panel_df(-d_APE_estimate_MLE/small_w)
+    weight = matrix_to_panel_df(small_w)$X
+
+    Psi = get_weighted_projection_fitted_exclude_t_eq_i(X_into$X, weight, X_into$id, X_into$time)
+    Psi_list[[k]] = matrix(Psi, N-1, N)
+    Psi_list[[k]]= shift_lower_triangle_and_add_zero_diag(Psi_list[[k]])
+    tilde_Psi_list[[k]] = -d_APE_estimate_MLE/small_w - Psi_list[[k]]
+    diag(tilde_Psi_list[[k]]) = 0
+    # D_hat
+    D_hat_another = (0.5 / (N-1)) * sum(colSums((dd_APE_estimate_MLE -  Psi_list[[k]] * H * dd_F_fix) * (1 - diag(N))) / colSums(small_w * (1 - diag(N))))
+
+    # B_hat
+    B_hat_another = (0.5/N) * compute_B_hat_another(2* H * (y - Phi_XB), small_w * tilde_Psi_list[[k]], dd_APE_estimate_MLE - H * dd_F_fix * Psi_list[[k]] , small_w, L)
+
+    APE_analytical[k] = mean(APE_estimate) - B_hat_another*(1/(N-1)) - D_hat_another*(1/N)
+
+    # residual X
+    X_into = matrix_to_panel_df(X)
+    weight = matrix_to_panel_df(small_w)$X
+    re = get_weighted_projection_fitted_exclude_t_eq_i(X_into$X, weight, X_into$id, X_into$time)
+    re_matrix = matrix(re, N-1, N)
+    re_matrix = shift_lower_triangle_and_add_zero_diag(re_matrix)
+    tilde_X_list[[k]] = X - re_matrix
   }
-  APE_MLE = mean(APE_estimate_MLE)
-  index1 = data[,index[1]]
-  index2 = data[,index[2]]
-  new_index1 <- match(index1, sort(unique(index1)))
-  new_index2 <- match(index2, sort(unique(index2)))
 
-  data[,index[1]] =  new_index1
-  data[,index[2]] =  new_index2
+  tilde_X_array <- array(unlist(tilde_X_list), dim = c(N, N, K))
+  Psi_array <- array(unlist(Psi_list), dim = c(N, N, K))
+  tilde_Psi_array <- array(unlist(tilde_Psi_list), dim = c(N, N, K))
+  APE_MLE_array <- array(unlist(APE_MLE_list), dim = c(N, N, K))
+  d_APE_MLE_array <- array(unlist(d_APE_MLE_list), dim = c(N, N, K))
 
-  X = vector_to_matrix(X, N, ind1 = data[,index[1]], ind2 = data[,index[2]])
-  y = vector_to_matrix(y, N, ind1 = data[,index[1]], ind2 = data[,index[2]])
-  APE_estimate = matrix(APE_estimate, N-1,N)
-  APE_estimate = shift_lower_triangle_and_add_zero_diag(APE_estimate)
-  d_APE_estimate = matrix(d_APE_estimate, N-1,N)
-  d_APE_estimate = shift_lower_triangle_and_add_zero_diag(d_APE_estimate)
-  dd_APE_estimate = matrix(dd_APE_estimate, N-1,N)
-  dd_APE_estimate = shift_lower_triangle_and_add_zero_diag(dd_APE_estimate)
-  APE_estimate_MLE = matrix(APE_estimate_MLE, N-1,N)
-  APE_estimate_MLE = shift_lower_triangle_and_add_zero_diag(APE_estimate_MLE)
-  d_APE_estimate_MLE = matrix(d_APE_estimate_MLE, N-1,N)
-  d_APE_estimate_MLE = shift_lower_triangle_and_add_zero_diag(d_APE_estimate_MLE)
-  dd_APE_estimate_MLE = matrix(dd_APE_estimate_MLE, N-1,N)
-  dd_APE_estimate_MLE = shift_lower_triangle_and_add_zero_diag(dd_APE_estimate_MLE)
-  y[row(y) == col(y)] = 0
 
-  cov_sum = matrix(eta_MLE, N-1,N)
-  cov_sum = shift_lower_triangle_and_add_zero_diag(cov_sum)
-  cov_sum[row(cov_sum) == col(cov_sum)] = 0
+  # Step 4: Initialize sum matrix for outer products
+  W_hat_another <- matrix(0, nrow = K, ncol = K)
+  D_beta_APE <- 0
+  tau = array(0, dim = c(N, N, K))
+  # Step 5: For each position (i, j), extract vector and compute outer product
+  for (i in 1:N) {
+    for (j in 1:N) {
+      if(j!=i){
+        v_ij <- tilde_X_array[i, j, ]             # Vector of length p
+        W_hat_another <- W_hat_another + (1 / ((N-1)*N)) * small_w[i,j] * v_ij %*% t(v_ij)  # Outer product and sum
+        D_beta_APE =  D_beta_APE +  (1 / ((N-1)*N)) * d_APE_MLE_array[i,j, ] * v_ij
+      }
+    }
+  }
 
-  Phi_XB <- pnorm(cov_sum)  # CDF (Φ(Xβ))
-  phi_XB <- dnorm(cov_sum)  # PDF (φ(Xβ))
+  for (i in 1:N) {
+    for (j in 1:N) {
+      if(j!=i){
+        tau[i,j,] = as.matrix(t(D_beta_APE) %*% solve(W_hat_another)) * as.matrix(t(H[i,j] * (y[i,j] - Phi_XB[i,j]) * tilde_X_array[i,j,])) - Psi_array[i,j,] * H[i,j] * (y[i,j] - Phi_XB[i,j])
+      }
+    }
+  }
 
-  Phi_XB[row(cov_sum) == col(cov_sum)] = 0
-  phi_XB[row(cov_sum) == col(cov_sum)] = 0
-  Phi_XB <- pmax(Phi_XB, 1e-9)
-  Phi_XB <- pmin(Phi_XB, 1 - 1e-9)
+  tilde_APE_MLE_array = array(0, dim = c(N, N, K))
+  for (k in 1:K) {
+    tilde_APE_MLE_array[,,k] <-  APE_MLE_array[,,k] - colMeans(APE_MLE_array[,,k])
+    diag(tilde_APE_MLE_array[,,k]) = 0
+    APE_MLE[k] = sum(APE_MLE_array[,,k])/(N*(N-1))
+  }
 
-  dd_F_fix = -cov_sum * phi_XB
-  ddd_F_fix = cov_sum^2 * phi_XB - phi_XB
-
-  # derivative_ingredients = compute_derivatives(eta = cov_sum, y = y, X = X)
-  #
-  # # preparation for ingredients
-  # d_fix_loss =  derivative_ingredients$d_fix_loss
-  # d_beta_loss = derivative_ingredients$d_beta_loss
-  # d_fix_fix_loss = derivative_ingredients$d_fix_fix_loss# d_beta_loss = X * (y - exp(cov_sum)/( 1 + exp(cov_sum)))
-  # d_beta_beta_loss = derivative_ingredients$d_beta_beta_loss# d_beta_fix_loss = X * ( - exp(cov_sum)/( 1 + exp(cov_sum))^2)
-  # d_beta_fix_loss = derivative_ingredients$d_beta_fix_loss
-  # d_fix_fix_fix_loss = derivative_ingredients$d_fix_fix_fix_loss
-  # d_beta_fix_fix_loss = derivative_ingredients$d_beta_fix_fix_loss
-  #
-  # # one way to calculate se based on formula
-  #
-  # # Hessian matrix
-  # H_a_a = matrix(0, N, N)
-  # H_g_g = matrix(0, N, N)
-  # for (i in 1:N) {
-  #   H_a_a[i, i] <- -(sum(d_fix_fix_loss[i, ]) - d_fix_fix_loss[i, i])/(N-1)  # sum of off-diagonal elements in row i
-  # }
-  # for (i in 1:N) {
-  #   H_g_g[i, i] <- -(sum(d_fix_fix_loss[-i, i]))/(N-1) # sum of off-diagonal elements in row i
-  # }
-  # H_a_g = -d_fix_fix_loss/((N-1))
-  #
-  # Hessian_bar =   cbind(rbind(H_a_a, t(H_a_g)), rbind(H_a_g, H_g_g))  + c(rep(1,N), rep(-1,N)) %*% t( c(rep(1,N), rep(-1,N)) )/N
-  # Hessain_inverse = solve(Hessian_bar)
-  # Hessian_a_a = Hessain_inverse[1:(N), 1:(N)]
-  # Hessian_g_a = Hessain_inverse[(N+1):(N+N), 1:(N)]
-  # Hessian_a_g = Hessain_inverse[1:(N), (N+1):(N+N)]
-  # Hessian_g_g = Hessain_inverse[(N+1):(N+N), (N+1):(N+N)]
-  #
-  # # matrix 'Xi'
-  # psi = matrix(0, N, N)
-  # for (i in 1:N) {
-  #   for (j in 1:N) {
-  #     temp_sum <- 0
-  #     for (s in 1:N) {
-  #       for (t in 1:N) {
-  #         if (t != s) {
-  #           temp_sum <- temp_sum + (-1/(N)) * (Hessian_a_a[i, s] + Hessian_g_a[j, s] + Hessian_a_g[i, t] + Hessian_g_g[j, t]) * d_APE_estimate_MLE[s, t]
-  #         }
-  #       }
-  #     }
-  #     psi[i, j] <- temp_sum
-  #   }
-  # }
-  #
-  # # matrix 'Xi'
-  # the = matrix(0, N, N)
-  # for (i in 1:N) {
-  #   for (j in 1:N) {
-  #     temp_sum <- 0
-  #     for (s in 1:N) {
-  #       for (t in 1:N) {
-  #         if (t != s) {
-  #           temp_sum <- temp_sum + (-1/(N)) * (Hessian_a_a[i, s] + Hessian_g_a[j, s] + Hessian_a_g[i, t] + Hessian_g_g[j, t]) * d_beta_fix_loss[s, t]
-  #         }
-  #       }
-  #     }
-  #     the[i, j] <- temp_sum
-  #   }
-  # }
-  #
-  # # W_hat based on Iva ́ n2016
-  # D_beta_loss = d_beta_loss - d_fix_loss * the
-  # D_beta_fix_loss = d_beta_fix_loss - d_fix_fix_loss * the
-  # D_beta_fix_fix_loss = d_beta_fix_fix_loss - d_fix_fix_fix_loss * the
-  #
-  # psi*d_fix_loss
-  # sum(d_APE_estimate_MLE*tilde_X)/(N*(N-1))
-  #
-  #
-  # as.numeric(sum(d_APE_estimate_MLE*X - psi*d_APE_estimate_MLE)/(N*(N-1))*solve(W_hat_another))* H * (y - Phi_XB)*tilde_X - Psi_matrix * H * (y - Phi_XB)
-  #### Another way to calculate the bias corrected
-  # another way to calculate the analytical corrected estimate
-  H = phi_XB/(Phi_XB*(1-Phi_XB))
-  small_w = H * phi_XB
-
-  # B_hat
-  X_into = matrix_to_panel_df(-d_APE_estimate_MLE/small_w)
-  weight = matrix_to_panel_df(small_w)$X
-
-  Psi = get_weighted_projection_fitted_exclude_t_eq_i(X_into$X, weight, X_into$id, X_into$time)
-  Psi_matrix = matrix(Psi, N-1, N)
-  Psi_matrix = shift_lower_triangle_and_add_zero_diag(Psi_matrix)
-  tilde_Psi = -d_APE_estimate_MLE/small_w - Psi_matrix
-  diag(tilde_Psi) = 0
-  # D_hat
-  D_hat_another = (0.5 / (N-1)) * sum(colSums((dd_APE_estimate_MLE -  Psi_matrix * H * dd_F_fix) * (1 - diag(N))) / colSums(small_w * (1 - diag(N))))
-
-  # B_hat
-  B_hat_another = (0.5/N) * compute_B_hat_another(2* H * (y - Phi_XB), small_w * tilde_Psi, dd_APE_estimate_MLE - H * dd_F_fix * Psi_matrix , small_w, L)
-
-  APE_analytical = mean(APE_estimate) - B_hat_another*(1/(N-1)) - D_hat_another*(1/N)
-
-  # residual X
-  X_into = matrix_to_panel_df(X)
-  weight = matrix_to_panel_df(small_w)$X
-  re = get_weighted_projection_fitted_exclude_t_eq_i(X_into$X, weight, X_into$id, X_into$time)
-  re_matrix = matrix(re, N-1, N)
-  re_matrix = shift_lower_triangle_and_add_zero_diag(re_matrix)
-  tilde_X = X - re_matrix
-  W_hat_another =   (1 / ((N-1)*N)) * (sum(  small_w  * tilde_X  * tilde_X   ) - sum(diag( small_w  * tilde_X  * tilde_X  )) )
-  tau = as.numeric((sum(d_APE_estimate_MLE*tilde_X)/(N*(N-1)))*solve(W_hat_another))* H * (y - Phi_XB)*tilde_X - Psi_matrix * H * (y - Phi_XB)
-  APE_residual = APE_estimate_MLE - colMeans(APE_estimate_MLE) # indentical assumption
-  diag(APE_residual) = 0
-  se = sqrt( compute_expression(APE_residual, tau))/(N*(N-1))
+  se = sqrt( diag(compute_expression_array(tilde_APE_MLE_array, tau)) )/(N*(N-1))
   res = list(APE_MLE = APE_MLE, APE = APE_analytical, se = se)
 
   return(res)
@@ -1026,113 +877,178 @@ get_APE_analytical<- function(y, X, N, data, index, fit, L = 1, model = 'probit'
 }
 
 #' @export
-get_APE_jackknife<- function(y, X, N, index, data, fit, L = 1, model = 'probit'){
-  cof_estimate = fit$est_jackknife_all[,1]
-  cof_estimate_MLE = fit$est_MLE[1]
-  eta = t(fit$eta)
-  eta_MLE = t(fit$eta_MLE)
-  if (is.numeric(X) && length(unique(X)) == 2) {
-    X_max = as.numeric(max(unique(X)))
-    X_min = as.numeric(min(unique(X)))
-    APE_estimate = matrix(0,N-1,N*(N-1))
-    d_APE_estimate = matrix(0,N-1,N*(N-1))
-    dd_APE_estimate = matrix(0,N-1,N*(N-1))
-    for (i in 1:N-1) {
-      APE_estimate[i,] = (pnorm(cof_estimate[i]* X_max + eta[,i] - cof_estimate[i] * X ) - pnorm(cof_estimate[i]* X_min + eta[,i] - cof_estimate[i] * X)) / (X_max - X_min)
-      d_APE_estimate[i,] = (dnorm(cof_estimate[i]* X_max + eta[,i] - cof_estimate[i] * X ) - dnorm(cof_estimate[i]* X_min + eta[,i] - cof_estimate[i] * X)) / (X_max - X_min)
-      dd_APE_estimate[i,] = (-(cof_estimate[i]* X_max + eta[,i] - cof_estimate[i] * X) * dnorm(cof_estimate[i]* X_max + eta[,i] - cof_estimate[i] * X) + (cof_estimate[i]* X_min + eta[,i] - cof_estimate[i] * X)  * dnorm(cof_estimate[i]* X_min + eta[,i] - cof_estimate[i] * X))/ (X_max - X_min)
-    }
-    APE_estimate_MLE = (pnorm(cof_estimate_MLE * X_max + eta_MLE - cof_estimate_MLE * X ) - pnorm(cof_estimate_MLE* X_min + eta_MLE - cof_estimate_MLE * X))/(X_max - X_min)
-    d_APE_estimate_MLE = (dnorm(cof_estimate_MLE * X_max + eta_MLE - cof_estimate_MLE * X ) - dnorm(cof_estimate_MLE* X_min +eta_MLE - cof_estimate_MLE * X) ) / (X_max - X_min)
-    dd_APE_estimate_MLE = (-(cof_estimate_MLE * X_max + eta_MLE - cof_estimate_MLE * X) * dnorm(cof_estimate_MLE* X_max + eta_MLE - cof_estimate_MLE * X ) + (cof_estimate_MLE* X_min + eta_MLE - cof_estimate_MLE * X)  * dnorm(cof_estimate_MLE* X_min + eta_MLE - cof_estimate_MLE * X)) / (X_max - X_min)
+get_APE_jackknife <- function(y, X, N, index, data, fit, L = 1, model = 'probit'){
+  K = dim(X)[2]
+  APE_MLE = rep(0, K)
+  APE_jack = rep(0, K)
+  tilde_X_list <- vector("list", K)
+  tilde_Psi_list <- vector("list", K)
+  APE_MLE_list <- vector("list", K)
+  d_APE_MLE_list <- vector("list", K)
+  Psi_list = vector("list", K)
+  W_hat_another <- matrix(0, nrow = K, ncol = K)
+  B_hat_another = matrix(0, nrow = K, ncol = 1)
+  D_hat_another = matrix(0, nrow = K, ncol = 1)
+  X_start = X
+  for (k in 1:K) {
+    X = X_start[,k]
+    cof_estimate = fit$est_jackknife_all[,k]
+    cof_estimate_MLE = fit$est_MLE[k]
+    eta = t(fit$eta)
+    eta_MLE = t(fit$eta_MLE)
+    if (is.numeric(X) && length(unique(X)) == 2) {
+      X_max = as.numeric(max(unique(X)))
+      X_min = as.numeric(min(unique(X)))
+      APE_estimate = matrix(0,N-1,N*(N-1))
+      d_APE_estimate = matrix(0,N-1,N*(N-1))
+      dd_APE_estimate = matrix(0,N-1,N*(N-1))
+      for (i in 1:N-1) {
+        APE_estimate[i,] = (pnorm(cof_estimate[i]* X_max + eta[,i] - cof_estimate[i] * X ) - pnorm(cof_estimate[i]* X_min + eta[,i] - cof_estimate[i] * X)) / (X_max - X_min)
+        d_APE_estimate[i,] = (dnorm(cof_estimate[i]* X_max + eta[,i] - cof_estimate[i] * X ) - dnorm(cof_estimate[i]* X_min + eta[,i] - cof_estimate[i] * X)) / (X_max - X_min)
+        dd_APE_estimate[i,] = (-(cof_estimate[i]* X_max + eta[,i] - cof_estimate[i] * X) * dnorm(cof_estimate[i]* X_max + eta[,i] - cof_estimate[i] * X) + (cof_estimate[i]* X_min + eta[,i] - cof_estimate[i] * X)  * dnorm(cof_estimate[i]* X_min + eta[,i] - cof_estimate[i] * X))/ (X_max - X_min)
+      }
+      APE_estimate_MLE = (pnorm(cof_estimate_MLE * X_max + eta_MLE - cof_estimate_MLE * X ) - pnorm(cof_estimate_MLE* X_min + eta_MLE - cof_estimate_MLE * X))/(X_max - X_min)
+      d_APE_estimate_MLE = (dnorm(cof_estimate_MLE * X_max + eta_MLE - cof_estimate_MLE * X ) - dnorm(cof_estimate_MLE* X_min +eta_MLE - cof_estimate_MLE * X) ) / (X_max - X_min)
+      dd_APE_estimate_MLE = (-(cof_estimate_MLE * X_max + eta_MLE - cof_estimate_MLE * X) * dnorm(cof_estimate_MLE* X_max + eta_MLE - cof_estimate_MLE * X ) + (cof_estimate_MLE* X_min + eta_MLE - cof_estimate_MLE * X)  * dnorm(cof_estimate_MLE* X_min + eta_MLE - cof_estimate_MLE * X)) / (X_max - X_min)
 
-  }else{
-    APE_estimate = matrix(0,N-1,N*(N-1))
-    d_APE_estimate = matrix(0,N-1,N*(N-1))
-    dd_APE_estimate = matrix(0,N-1,N*(N-1))
-    for (i in 1:N-1) {
-      APE_estimate[i,] = cof_estimate[i] * dnorm(eta[,i])
-      d_APE_estimate[i,] = cof_estimate[i] * (-eta[,i]) * dnorm(eta[,i])
-      dd_APE_estimate[i,] = cof_estimate[i]*(- dnorm(eta[,i]) + eta[,i]^2 * dnorm(eta[,i]))
+    }else{
+      APE_estimate = matrix(0,N-1,N*(N-1))
+      d_APE_estimate = matrix(0,N-1,N*(N-1))
+      dd_APE_estimate = matrix(0,N-1,N*(N-1))
+      for (i in 1:N-1) {
+        APE_estimate[i,] = cof_estimate[i] * dnorm(eta[,i])
+        d_APE_estimate[i,] = cof_estimate[i] * (-eta[,i]) * dnorm(eta[,i])
+        dd_APE_estimate[i,] = cof_estimate[i]*(- dnorm(eta[,i]) + eta[,i]^2 * dnorm(eta[,i]))
+      }
+      APE_estimate_MLE = cof_estimate_MLE * dnorm(eta_MLE)
+      d_APE_estimate_MLE = cof_estimate_MLE * (-eta_MLE) * dnorm(eta_MLE)
+      dd_APE_estimate_MLE = cof_estimate_MLE * (- dnorm(eta_MLE) + eta_MLE^2 * dnorm(eta_MLE))
     }
-    APE_estimate_MLE = cof_estimate_MLE * dnorm(eta_MLE)
-    d_APE_estimate_MLE = cof_estimate_MLE * (-eta_MLE) * dnorm(eta_MLE)
-    dd_APE_estimate_MLE = cof_estimate_MLE * (- dnorm(eta_MLE) + eta_MLE^2 * dnorm(eta_MLE))
+
+    APE_jack[k] = (N-1)*mean(APE_estimate_MLE) - (N-2)* mean( apply(APE_estimate,1,mean) )
+    APE_MLE[k] =  mean(APE_estimate_MLE)
   }
-  APE_MLE = mean(APE_estimate_MLE)
-  APE_jack = (N-1)*mean(APE_estimate_MLE) - (N-2)* mean( apply(APE_estimate,1,mean) )
-
-  index1 = data[,index[1]]
-  index2 = data[,index[2]]
-  new_index1 <- match(index1, sort(unique(index1)))
-  new_index2 <- match(index2, sort(unique(index2)))
-
-  data[,index[1]] =  new_index1
-  data[,index[2]] =  new_index2
-
-  X = vector_to_matrix(X, N, ind1 = data[,index[1]], ind2 = data[,index[2]])
-  y = vector_to_matrix(y, N, ind1 = data[,index[1]], ind2 = data[,index[2]])
-  # APE_estimate = matrix(APE_estimate, N-1,N)
-  # APE_estimate = shift_lower_triangle_and_add_zero_diag(APE_estimate)
-  # d_APE_estimate = matrix(d_APE_estimate, N-1,N)
-  # d_APE_estimate = shift_lower_triangle_and_add_zero_diag(d_APE_estimate)
-  # dd_APE_estimate = matrix(dd_APE_estimate, N-1,N)
-  # dd_APE_estimate = shift_lower_triangle_and_add_zero_diag(dd_APE_estimate)
-  APE_estimate_MLE = matrix(APE_estimate_MLE, N-1,N)
-  APE_estimate_MLE = shift_lower_triangle_and_add_zero_diag(APE_estimate_MLE)
-  d_APE_estimate_MLE = matrix(d_APE_estimate_MLE, N-1,N)
-  d_APE_estimate_MLE = shift_lower_triangle_and_add_zero_diag(d_APE_estimate_MLE)
-  dd_APE_estimate_MLE = matrix(dd_APE_estimate_MLE, N-1,N)
-  dd_APE_estimate_MLE = shift_lower_triangle_and_add_zero_diag(dd_APE_estimate_MLE)
-  y[row(y) == col(y)] = 0
-
-  cov_sum= matrix(eta_MLE, N-1,N)
-  cov_sum = shift_lower_triangle_and_add_zero_diag(cov_sum)
-  cov_sum[row(cov_sum) == col(cov_sum)] = 0
-
-  Phi_XB <- pnorm(cov_sum)  # CDF (Φ(Xβ))
-  phi_XB <- dnorm(cov_sum)  # PDF (φ(Xβ))
-
-  Phi_XB[row(cov_sum) == col(cov_sum)] = 0
-  phi_XB[row(cov_sum) == col(cov_sum)] = 0
-  Phi_XB <- pmax(Phi_XB, 1e-9)
-  Phi_XB <- pmin(Phi_XB, 1 - 1e-9)
-  dd_F_fix = -cov_sum * phi_XB
-  ddd_F_fix = cov_sum^2 * phi_XB - phi_XB
-
-  #### Another way to calculate the bias corrected
-  # another way to calculate the analytical corrected estimate
-  H = phi_XB/(Phi_XB*(1-Phi_XB))
-  small_w = H * phi_XB
-
-  # B_hat
-  X_into = matrix_to_panel_df(-d_APE_estimate_MLE/small_w)
-  weight = matrix_to_panel_df(small_w)$X
-
-  Psi = get_weighted_projection_fitted_exclude_t_eq_i(X_into$X, weight, X_into$id, X_into$time)
-  Psi_matrix = matrix(Psi, N-1, N)
-  Psi_matrix = shift_lower_triangle_and_add_zero_diag(Psi_matrix)
-  tilde_Psi = -d_APE_estimate_MLE/small_w - Psi_matrix
-  diag(tilde_Psi) = 0
-  # D_hat
-  D_hat_another = (0.5 / (N-1)) * sum(colSums((dd_APE_estimate_MLE -  Psi_matrix * H * dd_F_fix) * (1 - diag(N))) / colSums(small_w * (1 - diag(N))))
-
-  # B_hat
-  B_hat_another = (0.5/N) * compute_B_hat_another(2* H * (y - Phi_XB), small_w * tilde_Psi, dd_APE_estimate_MLE - H * dd_F_fix * Psi_matrix , small_w, L)
 
 
-  # residual X
-  X_into = matrix_to_panel_df(X)
-  weight = matrix_to_panel_df(small_w)$X
-  re = get_weighted_projection_fitted_exclude_t_eq_i(X_into$X, weight, X_into$id, X_into$time)
-  re_matrix = matrix(re, N-1, N)
-  re_matrix = shift_lower_triangle_and_add_zero_diag(re_matrix)
-  tilde_X = X - re_matrix
-  W_hat_another =   (1 / ((N-1)*N)) * (sum(  small_w  * tilde_X  * tilde_X   ) - sum(diag( small_w  * tilde_X  * tilde_X  )) )
-  tau = as.numeric((sum(d_APE_estimate_MLE*tilde_X)/(N*(N-1)))*solve(W_hat_another))* H * (y - Phi_XB)*tilde_X - Psi_matrix * H * (y - Phi_XB)
-  APE_residual = APE_estimate_MLE - colMeans(APE_estimate_MLE) # indentical assumption
-  diag(APE_residual) = 0
-  se = sqrt( compute_expression(APE_residual, tau))/(N*(N-1))
+  # calculate se
+  APE_MLE = rep(0, K)
+  tilde_X_list <- vector("list", K)
+  tilde_Psi_list <- vector("list", K)
+  APE_MLE_list <- vector("list", K)
+  d_APE_MLE_list <- vector("list", K)
+  Psi_list = vector("list", K)
+  W_hat_another <- matrix(0, nrow = K, ncol = K)
+  for (k in 1:K) {
+    X = X_start[,k]
+    cof_estimate_MLE = fit$est_MLE[k]
+    eta_MLE = t(fit$eta_MLE)
+    if (is.numeric(X) && length(unique(X)) == 2) {
+      X_max = as.numeric(max(unique(X)))
+      X_min = as.numeric(min(unique(X)))
+      APE_estimate_MLE = (pnorm(cof_estimate_MLE * X_max + eta_MLE - cof_estimate_MLE * X ) - pnorm(cof_estimate_MLE* X_min + eta_MLE - cof_estimate_MLE * X)) / (X_max - X_min)
+      d_APE_estimate_MLE = (dnorm(cof_estimate_MLE * X_max + eta_MLE - cof_estimate_MLE * X ) - dnorm(cof_estimate_MLE* X_min +eta_MLE - cof_estimate_MLE * X) ) / (X_max - X_min)
+      dd_APE_estimate_MLE = (-(cof_estimate_MLE * X_max + eta_MLE - cof_estimate_MLE * X) * dnorm(cof_estimate_MLE* X_max + eta_MLE - cof_estimate_MLE * X ) + (cof_estimate_MLE* X_min + eta_MLE - cof_estimate_MLE * X)  * dnorm(cof_estimate_MLE* X_min + eta_MLE - cof_estimate_MLE * X)) / (X_max - X_min)
+
+    }else{
+
+      APE_estimate_MLE = cof_estimate_MLE * dnorm(eta_MLE)
+      d_APE_estimate_MLE = cof_estimate_MLE * (-eta_MLE) * dnorm(eta_MLE)
+      dd_APE_estimate_MLE = cof_estimate_MLE * (- dnorm(eta_MLE) + eta_MLE^2 * dnorm(eta_MLE))
+    }
+
+
+    index1 = data[,index[1]]
+    index2 = data[,index[2]]
+    new_index1 <- match(index1, sort(unique(index1)))
+    new_index2 <- match(index2, sort(unique(index2)))
+
+    data[,index[1]] =  new_index1
+    data[,index[2]] =  new_index2
+
+    X = vector_to_matrix(X, N, ind1 = data[,index[1]], ind2 = data[,index[2]])
+    y = vector_to_matrix(y, N, ind1 = data[,index[1]], ind2 = data[,index[2]])
+    APE_estimate_MLE = matrix(APE_estimate_MLE, N-1,N)
+    APE_estimate_MLE = shift_lower_triangle_and_add_zero_diag(APE_estimate_MLE)
+    d_APE_estimate_MLE = matrix(d_APE_estimate_MLE, N-1,N)
+    d_APE_estimate_MLE = shift_lower_triangle_and_add_zero_diag(d_APE_estimate_MLE)
+    dd_APE_estimate_MLE = matrix(dd_APE_estimate_MLE, N-1,N)
+    dd_APE_estimate_MLE = shift_lower_triangle_and_add_zero_diag(dd_APE_estimate_MLE)
+    APE_MLE_list[[k]] =  APE_estimate_MLE
+    d_APE_MLE_list[[k]] =  d_APE_estimate_MLE
+    cov_sum = matrix(eta_MLE, N-1,N)
+    cov_sum = shift_lower_triangle_and_add_zero_diag(cov_sum)
+    cov_sum[row(cov_sum) == col(cov_sum)] = 0
+    Phi_XB <- pnorm(cov_sum)  # CDF (Φ(Xβ))
+    phi_XB <- dnorm(cov_sum)  # PDF (φ(Xβ))
+    Phi_XB[row(cov_sum) == col(cov_sum)] = 0
+    phi_XB[row(cov_sum) == col(cov_sum)] = 0
+    Phi_XB <- pmax(Phi_XB, 1e-9)
+    Phi_XB <- pmin(Phi_XB, 1 - 1e-9)
+
+    dd_F_fix = -cov_sum * phi_XB
+    ddd_F_fix = cov_sum^2 * phi_XB - phi_XB
+
+    #### Another way to calculate the bias corrected
+    # another way to calculate the analytical corrected estimate
+    H = phi_XB/(Phi_XB*(1-Phi_XB))
+    small_w = H * phi_XB
+
+    # B_hat
+    X_into = matrix_to_panel_df(-d_APE_estimate_MLE/small_w)
+    weight = matrix_to_panel_df(small_w)$X
+    Psi = get_weighted_projection_fitted_exclude_t_eq_i(X_into$X, weight, X_into$id, X_into$time)
+    Psi_list[[k]] = matrix(Psi, N-1, N)
+    Psi_list[[k]]= shift_lower_triangle_and_add_zero_diag(Psi_list[[k]])
+    tilde_Psi_list[[k]] = -d_APE_estimate_MLE/small_w - Psi_list[[k]]
+    diag(tilde_Psi_list[[k]]) = 0
+
+    # residual X
+    X_into = matrix_to_panel_df(X)
+    weight = matrix_to_panel_df(small_w)$X
+    re = get_weighted_projection_fitted_exclude_t_eq_i(X_into$X, weight, X_into$id, X_into$time)
+    re_matrix = matrix(re, N-1, N)
+    re_matrix = shift_lower_triangle_and_add_zero_diag(re_matrix)
+    tilde_X_list[[k]] = X - re_matrix
+  }
+
+  tilde_X_array <- array(unlist(tilde_X_list), dim = c(N, N, K))
+  Psi_array <- array(unlist(Psi_list), dim = c(N, N, K))
+  tilde_Psi_array <- array(unlist(tilde_Psi_list), dim = c(N, N, K))
+  APE_MLE_array <- array(unlist(APE_MLE_list), dim = c(N, N, K))
+  d_APE_MLE_array <- array(unlist(d_APE_MLE_list), dim = c(N, N, K))
+
+  # Step 4: Initialize sum matrix for outer products
+  W_hat_another <- matrix(0, nrow = K, ncol = K)
+  D_beta_APE <- 0
+  tau = array(0, dim = c(N, N, K))
+  # Step 5: For each position (i, j), extract vector and compute outer product
+  for (i in 1:N) {
+    for (j in 1:N) {
+      if(j!=i){
+        v_ij <- tilde_X_array[i, j, ]             # Vector of length p
+        W_hat_another <- W_hat_another + (1 / ((N-1)*N)) * small_w[i,j] * v_ij %*% t(v_ij)  # Outer product and sum
+        D_beta_APE =  D_beta_APE +  (1 / ((N-1)*N)) * d_APE_MLE_array[i,j, ] * v_ij
+      }
+    }
+  }
+
+  for (i in 1:N) {
+    for (j in 1:N) {
+      if(j!=i){
+        tau[i,j,] = as.matrix(t(D_beta_APE) %*% solve(W_hat_another)) * as.matrix(t(H[i,j] * (y[i,j] - Phi_XB[i,j]) * tilde_X_array[i,j,])) - Psi_array[i,j,] * H[i,j] * (y[i,j] - Phi_XB[i,j])
+      }
+    }
+  }
+
+  tilde_APE_MLE_array = array(0, dim = c(N, N, K))
+  for (k in 1:K) {
+    tilde_APE_MLE_array[,,k] <-  APE_MLE_array[,,k] - colMeans(APE_MLE_array[,,k])
+    diag(tilde_APE_MLE_array[,,k]) = 0
+    APE_MLE[k] = sum(APE_MLE_array[,,k])/(N*(N-1))
+  }
+
+  se = sqrt( diag(compute_expression_array(tilde_APE_MLE_array, tau)) )/(N*(N-1))
+
   res = list(APE_MLE = APE_MLE, APE = APE_jack, se = se)
 
   return(res)
