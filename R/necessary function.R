@@ -833,8 +833,6 @@ compute_B_hat_another <- function(D, E, B, C, L) {
 }
 
 compute_expression <- function(A, B) {
-  A = APE_residual
-  B = tau
   N <- nrow(A)
   total_sum <- 0
 
