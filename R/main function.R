@@ -583,7 +583,7 @@ analytical_Amrei = function(y, X, N, index, data, link = 'probit', L = 1, beta_N
     X = data[,colnames(X)]
   }
   mod <- alpaca::feglm(y ~ X | index.1 + index.2, data = data, family = binomial(link))
-  return(est = summary(biasCorr(mod, L = L, panel.structure = c( "network"))))
+  return(est = biasCorr(mod, L = L, panel.structure = c( "network")))
 
 }
 
