@@ -412,7 +412,6 @@ split_jackknife = function(y, X, N, index, data, link = 'probit', beta_NULL = NU
   se_corrected = rep(0, K)
   tilde_X_list <- vector("list", K)
   W_hat_another <- matrix(0, nrow = K, ncol = K)
-
   for (index_covariate in 1:K) {
 
     # X is a matrix of a single covariate, and the same for y
@@ -444,8 +443,6 @@ split_jackknife = function(y, X, N, index, data, link = 'probit', beta_NULL = NU
     re_matrix = matrix(re, N-1, N)
     re_matrix = shift_lower_triangle_and_add_zero_diag(re_matrix)
     tilde_X_list[[index_covariate]] = X - re_matrix
-    D_hat_another[index_covariate,] = -(0.5 / (N-1)) * sum(colSums((H * dd_F_fix * tilde_X_list[[index_covariate]]) * (1 - diag(N))) / colSums(small_w * (1 - diag(N))))
-    B_hat_another[index_covariate,] = -(0.5/N) * compute_B_hat_another(2* H * (y - Phi_XB), small_w * tilde_X_list[[index_covariate]], H * dd_F_fix * tilde_X_list[[index_covariate]], small_w, L)
   }
 
   tilde_X_array <- array(unlist(tilde_X_list), dim = c(N, N, K))
@@ -456,9 +453,10 @@ split_jackknife = function(y, X, N, index, data, link = 'probit', beta_NULL = NU
   # Step 5: For each position (i, j), extract vector and compute outer product
   for (i in 1:N) {
     for (j in 1:N) {
-      if(j!=i)
+      if(j!=i){
         v_ij <- tilde_X_array[i, j, ]             # Vector of length p
-      W_hat_another <- W_hat_another + (1 / ((N-1)*N)) * small_w[i,j] * v_ij %*% t(v_ij)  # Outer product and sum
+        W_hat_another <- W_hat_another + (1 / ((N-1)*N)) * small_w[i,j] * v_ij %*% t(v_ij)  # Outer product and sum
+      }
     }
   }
 
@@ -684,8 +682,9 @@ get_APE_bootstrap <- function(y, X, N, data, fit, model = 'probit'){
   APE_mean_bootstrap = rep(0 ,K)
   APE_median_bootstrap = rep(0 ,K)
   se = rep(0, K)
+  X_to = X
   for (k in 1:K) {
-
+    X = X_to[,k]
     cof_estimate = fit$est_bootstrap_all[,k]
     eta = fit$eta
     eta_MLE = matrix(fit$eta_MLE)
@@ -890,6 +889,7 @@ get_APE_jackknife <- function(y, X, N, index, data, fit, L = 1, model = 'probit'
   B_hat_another = matrix(0, nrow = K, ncol = 1)
   D_hat_another = matrix(0, nrow = K, ncol = 1)
   X_start = X
+  y_to = y
   for (k in 1:K) {
     X = X_start[,k]
     cof_estimate = fit$est_jackknife_all[,k]
@@ -966,7 +966,7 @@ get_APE_jackknife <- function(y, X, N, index, data, fit, L = 1, model = 'probit'
     data[,index[2]] =  new_index2
 
     X = vector_to_matrix(X, N, ind1 = data[,index[1]], ind2 = data[,index[2]])
-    y = vector_to_matrix(y, N, ind1 = data[,index[1]], ind2 = data[,index[2]])
+    y = vector_to_matrix(y_to, N, ind1 = data[,index[1]], ind2 = data[,index[2]])
     APE_estimate_MLE = matrix(APE_estimate_MLE, N-1,N)
     APE_estimate_MLE = shift_lower_triangle_and_add_zero_diag(APE_estimate_MLE)
     d_APE_estimate_MLE = matrix(d_APE_estimate_MLE, N-1,N)
