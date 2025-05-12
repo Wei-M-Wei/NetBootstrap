@@ -831,3 +831,40 @@ compute_B_hat_another <- function(D, E, B, C, L) {
 
   return(result)
 }
+
+compute_expression <- function(A, B) {
+  A = APE_residual
+  B = tau
+  N <- nrow(A)
+  total_sum <- 0
+
+  for (i in 1:N) {
+    # Indices t != i
+    t_idx <- setdiff(1:N, i)
+
+    # Term 1: sum_{t != i} sum_{tau != i} A[i, t] * A[i, tau]
+    term1 <- 0
+    for (t in t_idx) {
+      for (tau in t_idx) {
+        term1 <- term1 + A[i, t] * A[i, tau]
+      }
+    }
+
+    # Term 2: sum_{t != i} sum_{j != i, j != t} A[i, t] * A[j, t]
+    term2 <- 0
+    for (t in t_idx) {
+      j_idx <- setdiff(1:N, c(i, t))
+      for (j in j_idx) {
+        term2 <- term2 + A[i, t] * A[j, t]
+      }
+    }
+
+    # Term 3: sum_{t != i} B[i, t]^2
+    term3 <- sum(B[i, t_idx]^2)
+
+    # Accumulate
+    total_sum <- total_sum + term1 + term2 + term3
+  }
+
+  return(total_sum)
+}
