@@ -294,7 +294,6 @@ split_jackknife = function(y, X, N, index, data, link = 'probit', beta_NULL = NU
     drop_index = cbind(drop_index, i + (i - 1) * N)
   }
   fix = fix_effect[-drop_index,]
-
   # prepare teh final data
   X_design = cbind(X, fix)
   X_design = apply(X_design, 2, as.numeric)
@@ -818,7 +817,7 @@ get_APE_analytical<- function(y, X, N, data, index, fit, L = 1, model = 'probit'
     # B_hat
     B_hat = (0.5/N) * compute_B_hat(2* H * (y - Phi_XB), small_w * tilde_Psi_list[[k]], dd_APE_estimate_MLE - H * dd_F_fix * Psi_list[[k]] , small_w, L)
 
-    APE_analytical[k] = sum(APE_estimate)/(N*(N-1)) - B_hat*(1/(N-1)) - D_hat*(1/N)
+    APE_analytical[k] = sum(APE_estimate_MLE)/(N*(N-1)) - B_hat*(1/(N-1)) - D_hat*(1/N)
 
     # residual X
     X_into = matrix_to_panel_df(X)
