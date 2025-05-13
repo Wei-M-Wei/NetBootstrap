@@ -294,6 +294,7 @@ split_jackknife = function(y, X, N, index, data, link = 'probit', beta_NULL = NU
     drop_index = cbind(drop_index, i + (i - 1) * N)
   }
   fix = fix_effect[-drop_index,]
+
   # prepare teh final data
   X_design = cbind(X, fix)
   X_design = apply(X_design, 2, as.numeric)
@@ -411,7 +412,7 @@ split_jackknife = function(y, X, N, index, data, link = 'probit', beta_NULL = NU
   y_to = y
   se_corrected = rep(0, K)
   tilde_X_list <- vector("list", K)
-  W_hat_another <- matrix(0, nrow = K, ncol = K)
+  W_hat <- matrix(0, nrow = K, ncol = K)
   for (index_covariate in 1:K) {
 
     # X is a matrix of a single covariate, and the same for y
@@ -448,19 +449,19 @@ split_jackknife = function(y, X, N, index, data, link = 'probit', beta_NULL = NU
   tilde_X_array <- array(unlist(tilde_X_list), dim = c(N, N, K))
 
   # Step 4: Initialize sum matrix for outer products
-  W_hat_another <- matrix(0, nrow = K, ncol = K)
+  W_hat <- matrix(0, nrow = K, ncol = K)
 
   # Step 5: For each position (i, j), extract vector and compute outer product
   for (i in 1:N) {
     for (j in 1:N) {
       if(j!=i){
         v_ij <- tilde_X_array[i, j, ]             # Vector of length p
-        W_hat_another <- W_hat_another + (1 / ((N-1)*N)) * small_w[i,j] * v_ij %*% t(v_ij)  # Outer product and sum
+        W_hat <- W_hat + (1 / ((N-1)*N)) * small_w[i,j] * v_ij %*% t(v_ij)  # Outer product and sum
       }
     }
   }
 
-  se_corrected = sqrt( diag(solve(W_hat_another))/(N*(N-1)) )
+  se_corrected = sqrt( diag(solve(W_hat))/(N*(N-1)) )
 
   if(is.null(beta_NULL) != 1){
     res = list(est = estimate_jack, est_MLE = cof, est_jackknife_NULL = cof_constrain_j, est_jackknife_all = cof_jack_all,
@@ -591,13 +592,10 @@ analytical_corrected = function(y, X, N, index, data, link = 'probit', L = 1, be
   estimate_analytical = rep(0, K)
   estimate_analytical_another = rep(0, K)
   se = rep(0,K)
-  se_no_MLE = rep(0, K)
-  est_another = rep(0, K)
-  se_another = rep(0, K)
   tilde_X_list <- vector("list", K)
-  W_hat_another <- matrix(0, nrow = K, ncol = K)
-  B_hat_another = matrix(0, nrow = K, ncol = 1)
-  D_hat_another = matrix(0, nrow = K, ncol = 1)
+  W_hat <- matrix(0, nrow = K, ncol = K)
+  B_hat = matrix(0, nrow = K, ncol = 1)
+  D_hat = matrix(0, nrow = K, ncol = 1)
   for (index_covariate in 1:K) {
 
     # X is a matrix of a single covariate, and the same for y
@@ -629,28 +627,28 @@ analytical_corrected = function(y, X, N, index, data, link = 'probit', L = 1, be
     re_matrix = matrix(re, N-1, N)
     re_matrix = shift_lower_triangle_and_add_zero_diag(re_matrix)
     tilde_X_list[[index_covariate]] = X - re_matrix
-    D_hat_another[index_covariate,] = -(0.5 / (N-1)) * sum(colSums((H * dd_F_fix * tilde_X_list[[index_covariate]]) * (1 - diag(N))) / colSums(small_w * (1 - diag(N))))
-    B_hat_another[index_covariate,] = -(0.5/N) * compute_B_hat_another(2* H * (y - Phi_XB), small_w * tilde_X_list[[index_covariate]], H * dd_F_fix * tilde_X_list[[index_covariate]], small_w, L)
+    D_hat[index_covariate,] = -(0.5 / (N-1)) * sum(colSums((H * dd_F_fix * tilde_X_list[[index_covariate]]) * (1 - diag(N))) / colSums(small_w * (1 - diag(N))))
+    B_hat[index_covariate,] = -(0.5/N) * compute_B_hat(2* H * (y - Phi_XB), small_w * tilde_X_list[[index_covariate]], H * dd_F_fix * tilde_X_list[[index_covariate]], small_w, L)
   }
 
   tilde_X_array <- array(unlist(tilde_X_list), dim = c(N, N, K))
 
   # Step 4: Initialize sum matrix for outer products
-  W_hat_another <- matrix(0, nrow = K, ncol = K)
+  W_hat <- matrix(0, nrow = K, ncol = K)
 
   # Step 5: For each position (i, j), extract vector and compute outer product
   for (i in 1:N) {
     for (j in 1:N) {
       if(j!=i){
         v_ij <- tilde_X_array[i, j, ]             # Vector of length p
-        W_hat_another <- W_hat_another + (1 / ((N-1)*N)) * small_w[i,j] * v_ij %*% t(v_ij)  # Outer product and sum
+        W_hat <- W_hat + (1 / ((N-1)*N)) * small_w[i,j] * v_ij %*% t(v_ij)  # Outer product and sum
       }
     }
   }
 
   # estimate
-  estimate_analytical_another = est[1:K] - solve(W_hat_another)%*%B_hat_another*(1/(N-1)) - solve(W_hat_another)%*%D_hat_another*(1/N)
-  se_another =  sqrt( diag(solve(W_hat_another)) /(N*(N-1)) )
+  estimate_analytical_another = est[1:K] - solve(W_hat)%*%B_hat*(1/(N-1)) - solve(W_hat)%*%D_hat*(1/N)
+  se =  sqrt( diag(solve(W_hat)) /(N*(N-1)) )
 
 
   data_2 <- data_in
@@ -669,7 +667,7 @@ analytical_corrected = function(y, X, N, index, data, link = 'probit', L = 1, be
   eta = estimate_analytical_another %*% t(X_design)
   eta_MLE = cof %*% t(X_design)
 
-  res = list(est = estimate_analytical_another, se = se_another,
+  res = list(est = estimate_analytical_another, se = se,
              eta = eta, eta_MLE = eta_MLE, est_MLE = cof)
   return(res)
 
@@ -693,7 +691,7 @@ get_APE_bootstrap <- function(y, X, N, data, fit, model = 'probit'){
     if (is.numeric(X) && length(unique(X)) == 2) {
       X_max = max(unique(X))
       X_min = min(unique(X))
-      APE_MLE_estimate = (pnorm(cof_MLE * X_max + eta_MLE - cof_MLE * X ) - pnorm(cof_MLE * X_min + eta_MLE - cof_MLE * X) ) / (X_max - X_min)
+      APE_MLE_estimate = (pnorm(cof_MLE * X_max + eta_MLE - matrix(cof_MLE * X) ) - pnorm(cof_MLE * X_min + eta_MLE - cof_MLE * X) ) / (X_max - X_min)
       for (i in 1:length(cof_estimate)) {
         APE_estimate[i,] = (pnorm(cof_estimate[i]* X_max + eta[i,] - cof_estimate[i] * X ) - pnorm(cof_estimate[i]* X_min + eta[i,] - cof_estimate[i] * X )) / (X_max - X_min)
       }}else{
@@ -722,9 +720,9 @@ get_APE_analytical<- function(y, X, N, data, index, fit, L = 1, model = 'probit'
   APE_MLE_list <- vector("list", K)
   d_APE_MLE_list <- vector("list", K)
   Psi_list = vector("list", K)
-  W_hat_another <- matrix(0, nrow = K, ncol = K)
-  B_hat_another = matrix(0, nrow = K, ncol = 1)
-  D_hat_another = matrix(0, nrow = K, ncol = 1)
+  W_hat <- matrix(0, nrow = K, ncol = K)
+  B_hat = matrix(0, nrow = K, ncol = 1)
+  D_hat = matrix(0, nrow = K, ncol = 1)
   X_to = X
   y_to = y
 
@@ -815,12 +813,12 @@ get_APE_analytical<- function(y, X, N, data, index, fit, L = 1, model = 'probit'
     tilde_Psi_list[[k]] = -d_APE_estimate_MLE/small_w - Psi_list[[k]]
     diag(tilde_Psi_list[[k]]) = 0
     # D_hat
-    D_hat_another = (0.5 / (N-1)) * sum(colSums((dd_APE_estimate_MLE -  Psi_list[[k]] * H * dd_F_fix) * (1 - diag(N))) / colSums(small_w * (1 - diag(N))))
+    D_hat = (0.5 / (N-1)) * sum(colSums((dd_APE_estimate_MLE -  Psi_list[[k]] * H * dd_F_fix) * (1 - diag(N))) / colSums(small_w * (1 - diag(N))))
 
     # B_hat
-    B_hat_another = (0.5/N) * compute_B_hat_another(2* H * (y - Phi_XB), small_w * tilde_Psi_list[[k]], dd_APE_estimate_MLE - H * dd_F_fix * Psi_list[[k]] , small_w, L)
+    B_hat = (0.5/N) * compute_B_hat(2* H * (y - Phi_XB), small_w * tilde_Psi_list[[k]], dd_APE_estimate_MLE - H * dd_F_fix * Psi_list[[k]] , small_w, L)
 
-    APE_analytical[k] = mean(APE_estimate) - B_hat_another*(1/(N-1)) - D_hat_another*(1/N)
+    APE_analytical[k] = sum(APE_estimate)/(N*(N-1)) - B_hat*(1/(N-1)) - D_hat*(1/N)
 
     # residual X
     X_into = matrix_to_panel_df(X)
@@ -839,7 +837,7 @@ get_APE_analytical<- function(y, X, N, data, index, fit, L = 1, model = 'probit'
 
 
   # Step 4: Initialize sum matrix for outer products
-  W_hat_another <- matrix(0, nrow = K, ncol = K)
+  W_hat <- matrix(0, nrow = K, ncol = K)
   D_beta_APE <- 0
   tau = array(0, dim = c(N, N, K))
   # Step 5: For each position (i, j), extract vector and compute outer product
@@ -847,7 +845,7 @@ get_APE_analytical<- function(y, X, N, data, index, fit, L = 1, model = 'probit'
     for (j in 1:N) {
       if(j!=i){
         v_ij <- tilde_X_array[i, j, ]             # Vector of length p
-        W_hat_another <- W_hat_another + (1 / ((N-1)*N)) * small_w[i,j] * v_ij %*% t(v_ij)  # Outer product and sum
+        W_hat <- W_hat + (1 / ((N-1)*N)) * small_w[i,j] * v_ij %*% t(v_ij)  # Outer product and sum
         D_beta_APE =  D_beta_APE +  (1 / ((N-1)*N)) * d_APE_MLE_array[i,j, ] * v_ij
       }
     }
@@ -856,7 +854,7 @@ get_APE_analytical<- function(y, X, N, data, index, fit, L = 1, model = 'probit'
   for (i in 1:N) {
     for (j in 1:N) {
       if(j!=i){
-        tau[i,j,] = as.matrix(t(D_beta_APE) %*% solve(W_hat_another)) * as.matrix(t(H[i,j] * (y[i,j] - Phi_XB[i,j]) * tilde_X_array[i,j,])) - Psi_array[i,j,] * H[i,j] * (y[i,j] - Phi_XB[i,j])
+        tau[i,j,] = as.matrix(t(D_beta_APE) %*% solve(W_hat)) * as.matrix(t(H[i,j] * (y[i,j] - Phi_XB[i,j]) * tilde_X_array[i,j,])) - Psi_array[i,j,] * H[i,j] * (y[i,j] - Phi_XB[i,j])
       }
     }
   }
@@ -885,9 +883,9 @@ get_APE_jackknife <- function(y, X, N, index, data, fit, L = 1, model = 'probit'
   APE_MLE_list <- vector("list", K)
   d_APE_MLE_list <- vector("list", K)
   Psi_list = vector("list", K)
-  W_hat_another <- matrix(0, nrow = K, ncol = K)
-  B_hat_another = matrix(0, nrow = K, ncol = 1)
-  D_hat_another = matrix(0, nrow = K, ncol = 1)
+  W_hat <- matrix(0, nrow = K, ncol = K)
+  B_hat = matrix(0, nrow = K, ncol = 1)
+  D_hat = matrix(0, nrow = K, ncol = 1)
   X_start = X
   y_to = y
   for (k in 1:K) {
@@ -937,7 +935,7 @@ get_APE_jackknife <- function(y, X, N, index, data, fit, L = 1, model = 'probit'
   APE_MLE_list <- vector("list", K)
   d_APE_MLE_list <- vector("list", K)
   Psi_list = vector("list", K)
-  W_hat_another <- matrix(0, nrow = K, ncol = K)
+  W_hat <- matrix(0, nrow = K, ncol = K)
   for (k in 1:K) {
     X = X_start[,k]
     cof_estimate_MLE = fit$est_MLE[k]
@@ -1018,7 +1016,7 @@ get_APE_jackknife <- function(y, X, N, index, data, fit, L = 1, model = 'probit'
   d_APE_MLE_array <- array(unlist(d_APE_MLE_list), dim = c(N, N, K))
 
   # Step 4: Initialize sum matrix for outer products
-  W_hat_another <- matrix(0, nrow = K, ncol = K)
+  W_hat <- matrix(0, nrow = K, ncol = K)
   D_beta_APE <- 0
   tau = array(0, dim = c(N, N, K))
   # Step 5: For each position (i, j), extract vector and compute outer product
@@ -1026,7 +1024,7 @@ get_APE_jackknife <- function(y, X, N, index, data, fit, L = 1, model = 'probit'
     for (j in 1:N) {
       if(j!=i){
         v_ij <- tilde_X_array[i, j, ]             # Vector of length p
-        W_hat_another <- W_hat_another + (1 / ((N-1)*N)) * small_w[i,j] * v_ij %*% t(v_ij)  # Outer product and sum
+        W_hat <- W_hat + (1 / ((N-1)*N)) * small_w[i,j] * v_ij %*% t(v_ij)  # Outer product and sum
         D_beta_APE =  D_beta_APE +  (1 / ((N-1)*N)) * d_APE_MLE_array[i,j, ] * v_ij
       }
     }
@@ -1035,7 +1033,7 @@ get_APE_jackknife <- function(y, X, N, index, data, fit, L = 1, model = 'probit'
   for (i in 1:N) {
     for (j in 1:N) {
       if(j!=i){
-        tau[i,j,] = as.matrix(t(D_beta_APE) %*% solve(W_hat_another)) * as.matrix(t(H[i,j] * (y[i,j] - Phi_XB[i,j]) * tilde_X_array[i,j,])) - Psi_array[i,j,] * H[i,j] * (y[i,j] - Phi_XB[i,j])
+        tau[i,j,] = as.matrix(t(D_beta_APE) %*% solve(W_hat)) * as.matrix(t(H[i,j] * (y[i,j] - Phi_XB[i,j]) * tilde_X_array[i,j,])) - Psi_array[i,j,] * H[i,j] * (y[i,j] - Phi_XB[i,j])
       }
     }
   }
