@@ -161,7 +161,7 @@ network_bootstrap = function(y, X, N, bootstrap_time, index, data, link = 'probi
     speedglm(y ~ . - 1, data = data_in, family = binomial(link = link))
   fit = summary(model)
   Hessian_inv = vcov(model)
-  cof = unlist(as.list(fit$coefficients[, 1]))
+  cof = unlist(coef(model))
   log_likelihood_estimate <- logLik(model)
   cof[K+1] = sum(cof[(N+K+1):(N+N+K)]) - sum(cof[(K+2):(N+K)])
 
@@ -175,7 +175,7 @@ network_bootstrap = function(y, X, N, bootstrap_time, index, data, link = 'probi
       glm(formula = formula, data = data_2, family=binomial(link = link))
     fit_NULL = summary(model_NULL)
     Hessian_inv_NULL = vcov(model_NULL)
-    cof_NULL =  c(beta_NULL, NA, unlist(as.list(fit_NULL$coefficients[, 1])))
+    cof_NULL =  c(beta_NULL, unlist(coef(model_NULL)))
     log_likelihood_estimate_NULL <- logLik(model_NULL)
 
   }
@@ -194,9 +194,9 @@ network_bootstrap = function(y, X, N, bootstrap_time, index, data, link = 'probi
     Y = as.numeric(X_design %*% cof > epsi_it)
     data_boostrap <- data.frame(y = Y, X = X_design)
     model_B <-
-      speedglm(y ~ . - 1, data = data_boostrap, family = binomial(link = link))
+      glm(y ~ . - 1, data = data_boostrap, family = binomial(link = link))
     fit_B = summary(model_B)
-    cof_B = rbind(cof_B, unlist(as.list(fit_B$coefficients[, 1])))
+    cof_B = rbind(cof_B, unlist(coef(model_B)))
     log_likelihood_estimate_B <- rbind(log_likelihood_estimate_B, logLik(model_B))
 
 
@@ -206,9 +206,9 @@ network_bootstrap = function(y, X, N, bootstrap_time, index, data, link = 'probi
       formula <- as.formula( paste("y ~ -1 +", paste(colnames(data_2[,-2])[-1], collapse = " + "), "+ offset(offset_term)"))
       data_2$offset_term <- cof[1] * X_design[,1]
       model_B_NULL <-
-        speedglm(formula = formula, data = data_2, family=binomial(link = link))
+        glm(formula = formula, data = data_2, family=binomial(link = link))
       fit_B_NULL = summary(model_B_NULL)
-      cof_B_NULL = rbind(cof_B_NULL, c(beta_NULL, NA, unlist(as.list(fit_B_NULL$coefficients[, 1]))))
+      cof_B_NULL = rbind(cof_B_NULL, c(beta_NULL, unlist(coef(model_B_NULL))))
       log_likelihood_estimate_B_NULL <- rbind(log_likelihood_estimate_B_NULL, logLik(model_B_NULL))
     }
   }
@@ -305,7 +305,7 @@ split_jackknife = function(y, X, N, index, data, link = 'probit', beta_NULL = NU
     speedglm(y ~ . - 1, data = data_in, family = binomial(link = link))
   fit = summary(model)
   Hessian_inv = vcov(model)
-  cof = unlist(as.list(fit$coefficients[, 1]))
+  cof = unlist(coef(model))
   log_likelihood_estimate <- logLik(model)
   cof[K+1] = sum(cof[(N+K+1):(N+N+K)]) - sum(cof[(K+2):(N+K)])
 
@@ -368,7 +368,7 @@ split_jackknife = function(y, X, N, index, data, link = 'probit', beta_NULL = NU
       speedglm(y ~ . - 1, data = data_in, family = binomial(link = "probit"))
     fit_j = summary(model_j)
     Hessian_inv_1_j = vcov(model_j)
-    cof_j = rbind(cof_j, unlist(as.list(fit_j$coefficients[, 1])))
+    cof_j = rbind(cof_j, unlist(coef(model_j)))
     log_likelihood_j <- rbind( log_likelihood_j,logLik(model_j))
 
     if(is.null(beta_NULL) != 1){
@@ -380,8 +380,8 @@ split_jackknife = function(y, X, N, index, data, link = 'probit', beta_NULL = NU
         glm(formula = formula, data = data_2, family=binomial(link = 'probit'))
       fit_j_2 = summary(model_j_2)
       Hessian_inv_2_constrain_j = vcov(model_j_2)
-      cof_constrain_j = rbind(cof_constrain_j, c(beta_NULL, NA, unlist(as.list(fit_j_2$coefficients[, 1]))))
-      log_likelihood_constrain_j <- rbind( log_likelihood_constrain_j  , logLik(model_j_2))
+      cof_constrain_j = rbind(cof_constrain_j, c(beta_NULL, unlist(coef(model_j_2))))
+      log_likelihood_constrain_j <- rbind( log_likelihood_constrain_j, logLik(model_j_2))
     }
   }
 
@@ -572,7 +572,7 @@ analytical_corrected = function(y, X, N, index, data, link = 'probit', L = 1, be
     speedglm(y ~ . - 1, data = data_in, family = binomial(link = link))
   fit = summary(model)
   Hessian_inv = vcov(model)
-  cof = unlist(as.list(fit$coefficients[, 1]))
+  cof = unlist(coef(model))
   log_likelihood_estimate <- logLik(model)
   cof[K+1] = sum(cof[(N+K+1):(N+N+K)]) - sum(cof[(K+2):(N+K)])
 
@@ -657,10 +657,11 @@ analytical_corrected = function(y, X, N, index, data, link = 'probit', L = 1, be
   }else{
     data_2$offset_term <- as.vector(estimate_analytical_another %*% X_design[,1:K])
   }
+
   model_j_2 <-
-    speedglm(formula = formula, data = data_2, family=binomial(link = 'probit'))
+    glm(formula = formula, data = data_2, family=binomial(link = 'probit'))
   fit_j_2 = summary(model_j_2)
-  estimate_analytical_another = c(estimate_analytical_another, unlist(as.list(fit_j_2$coefficients[, 1])))
+  estimate_analytical_another = c(estimate_analytical_another, unlist(coef(model_j_2)))
   estimate_analytical_another[K+1] = sum(estimate_analytical_another[(N+K+1):(N+N+K)]) - sum(estimate_analytical_another[(K+2):(N+K)])
 
   eta = estimate_analytical_another %*% t(X_design)
@@ -690,7 +691,7 @@ get_APE_bootstrap <- function(y, X, N, data, fit, model = 'probit'){
     if (is.numeric(X) && length(unique(X)) == 2) {
       X_max = max(unique(X))
       X_min = min(unique(X))
-      APE_MLE_estimate = (pnorm(cof_MLE * X_max + eta_MLE - matrix(cof_MLE * X) ) - pnorm(cof_MLE * X_min + eta_MLE - cof_MLE * X) ) / (X_max - X_min)
+      APE_MLE_estimate = (pnorm(cof_MLE * X_max + eta_MLE - matrix(cof_MLE * X) ) - pnorm(cof_MLE * X_min + eta_MLE - matrix(cof_MLE * X) ) ) / (X_max - X_min)
       for (i in 1:length(cof_estimate)) {
         APE_estimate[i,] = (pnorm(cof_estimate[i]* X_max + eta[i,] - cof_estimate[i] * X ) - pnorm(cof_estimate[i]* X_min + eta[i,] - cof_estimate[i] * X )) / (X_max - X_min)
       }}else{
