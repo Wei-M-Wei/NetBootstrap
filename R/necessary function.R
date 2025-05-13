@@ -866,3 +866,42 @@ compute_expression <- function(A, B) {
 
   return(total_sum)
 }
+
+compute_expression_array <- function(A, B) {
+  N <- dim(A)[1]
+  T <- dim(A)[2]
+  d <- dim(A)[3]
+
+  total_sum <- matrix(0, nrow = d, ncol = d)
+
+  for (i in 1:N) {
+    t_idx <- setdiff(1:T, i)
+
+    # Term 1: sum_{t ≠ i} sum_{τ ≠ i} A[i,t,] %*% t(A[i,τ,])
+    for (t in t_idx) {
+      A_it <- A[i, t, ]
+      for (tau in t_idx) {
+        A_itau <- A[i, tau, ]
+        total_sum <- total_sum + A_it %*% t(A_itau)
+      }
+    }
+
+    # Term 2: sum_{t ≠ i} sum_{j ≠ i, j ≠ t} A[i,t,] %*% t(A[j,t,])
+    for (t in t_idx) {
+      A_it <- A[i, t, ]
+      j_idx <- setdiff(1:N, c(i, t))
+      for (j in j_idx) {
+        A_jt <- A[j, t, ]
+        total_sum <- total_sum + A_it %*% t(A_jt)
+      }
+    }
+
+    # Term 3: sum_{t ≠ i} B[i,t,] %*% t(B[i,t,])
+    for (t in t_idx) {
+      B_it <- B[i, t, ]
+      total_sum <- total_sum + B_it %*% t(B_it)
+    }
+  }
+
+  return(total_sum)
+}
