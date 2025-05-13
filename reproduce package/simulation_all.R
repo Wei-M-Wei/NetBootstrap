@@ -9,19 +9,19 @@ library(speedglm)
 source('simulation data.R')
 packages_to_export <- c("dplyr", 'NetBootstrap', 'alpaca', 'speedglm', 'fixest')
 num_cores <- detectCores()
-cl <- makeCluster(num_cores-7)
+cl <- makeCluster(num_cores-22)
 registerDoParallel(cl)
 
 # probit model network
-N = 50
+N = 30
 N_seq = c(N)
 
 # bootstrap times
-bootstrap_time = 599
+bootstrap_time = 199
 
 # repitition times
-mle_num = 1000
-
+mle_num = 300
+design = 1
 for(design in c(1,2,3,4)){
 
   # empty matrix
@@ -65,7 +65,7 @@ for(design in c(1,2,3,4)){
 
       # estimation
       fit = network_bootstrap(y = y, X = X_design, N = N, bootstrap_time = bootstrap_time, index = index_name, data = data_in, link = 'probit', beta_NULL = beta_NULL)
-      fit_jack = split_jackknife(y = y, X = X_design, N = N, index = index_name, data = data_in, link = 'probit', beta_NULL = NULL)
+      fit_jack = split_jackknife(y = y, X = X_design, N = N, index = index_name, data = data_in, link = 'probit',  beta_NULL = NULL)
       fit_analytical = analytical_Amrei(y = y, X = X_design, N = N, index = index_name, data = data_in, link = 'probit', L = 1, beta_NULL = NULL)
       fit_analytical_own = analytical_corrected(y = y, X = X_design, N = N, index = index_name, data = data_in, link = 'probit', L = 1, beta_NULL = NULL)
 
@@ -75,15 +75,23 @@ for(design in c(1,2,3,4)){
       Medain_bootstrap_estimate = fit$est_median[1]
       Mean_bootstrap_estimate = fit$est_mean[1]
       jack_estimate = fit_jack$est[1]
-      analytical_estimate = fit_analytical$cm[1]
+      analytical_estimate = summary(fit_analytical)$cm[1]
       analytical_estimate_own = fit_analytical_own$est[1]
       bootstrap_estimate = fit$est_bootstrap_all[,1]
       mean_bias = mean(fit$est_bootstrap_all[,1]) - fit$est_MLE[1]
       se_MLE = sqrt(fit$Hessian_MLE[1,1])
       se_bootstrap = fit$sd
       se_jack = fit_jack$se
-      se_analytical = fit_analytical$cm[2]
+      se_analytical = summary(fit_analytical)$cm[2]
       se_analytical_own = fit_analytical_own$se
+
+      pre_pivoting_bootstrap = (Medain_bootstrap_estimate - beta)/se_analytical_own
+
+      if ( pre_pivoting_bootstrap <= qnorm(0.975) & pre_pivoting_bootstrap >= qnorm(0.025)){
+        p_cover_bootstrap_pre_pivoting  =  1
+      }else{
+        p_cover_bootstrap_pre_pivoting  =  0
+      }
 
 
       # several evaluations
@@ -126,11 +134,12 @@ for(design in c(1,2,3,4)){
             APE_true[i, j] = (pnorm(beta + alpha[i] + gamma[j]) - pnorm(-beta + alpha[i] + gamma[j]))/2
         }
       }
-      APE_true = mean(APE_true)
+      APE_true = sum(APE_true)/(N*(N-1))
       APE_bootstrap = get_APE_bootstrap(y = y, X = X_design, N = N, data = data_in, fit = fit)
       APE_jackknife = get_APE_jackknife(y = y, X = X_design, N = N, data = data_in, index = index_name, fit = fit_jack, L = 1)
-      APE_analytical = get_APE_analytical(y = y, X = X_design, N = N, data = data_in, index = index_name,fit = fit_analytical_own, L = 1)
+      APE_analytical = get_APE_analytical(y = y, X = X_design, N = N, data = data_in, index = index_name, fit = fit_analytical_own, L = 1)
       APE_se_formula = c(APE_analytical$se, APE_bootstrap$se, APE_bootstrap$se, APE_jackknife$se, APE_analytical$se)
+      summary(getAPEs(fit_analytical, panel.structure = 'network'))
 
       results = list( MLE_estimate = MLE_estimate, Mean_bootstrap_estimate  = Mean_bootstrap_estimate , Medain_bootstrap_estimate = Medain_bootstrap_estimate, bootstrap_estimate = bootstrap_estimate,
                       jack_estimate = jack_estimate, analytical_estimate = analytical_estimate, analytical_estimate_own = analytical_estimate_own,
@@ -138,7 +147,7 @@ for(design in c(1,2,3,4)){
                       cov_var_MLE = fit$Hessian_MLE[1,1], cov_var_jack = fit$Hessian_MLE[1,1],
                       se_MLE = se_MLE, se_bootstrap = se_bootstrap, se_jack = se_jack, se_analytical = se_analytical, se_analytical_own = se_analytical_own,
                       p_cover_MLE = p_cover_MLE, p_cover_bootstrap = p_cover_bootstrap, p_cover_jack = p_cover_jack,
-                      p_cover_analytical = p_cover_analytical,p_cover_analytical_own = p_cover_analytical_own,
+                      p_cover_analytical = p_cover_analytical,p_cover_analytical_own = p_cover_analytical_own, p_cover_bootstrap_pre_pivoting = p_cover_bootstrap_pre_pivoting,
                       APE_true = APE_true, APE_MLE = APE_bootstrap$APE_MLE, APE_mean = APE_bootstrap$APE_mean_bootstrap, APE_median = APE_bootstrap$APE_median_bootstrap, APE_jackknife = APE_jackknife$APE,  APE_analytical =  APE_analytical$APE,
                       APE_se_formula = APE_se_formula)
       return(results)
@@ -154,14 +163,15 @@ for(design in c(1,2,3,4)){
       t_index = t_index + 1
     } else {
       all_estimator = matrix(0, length(result), 6)
-      Boot_estimate = matrix(0, length(result), 2)
+      Boot_estimate_all = matrix(0, length(result), bootstrap_time)
       se_estimator = matrix(0, length(result), 6)
       p_cover_bootstrap = 0
       p_cover_MLE = 0
       p_cover_jack = 0
       p_cover_analytical = 0
       p_cover_analytical_own = 0
-
+      p_cover_bootstrap_pre_pivoting = 0
+      p_pivoting = 0
       all_APE = matrix(0, length(result), 5)
       APE_se_formula = matrix(0, length(result), 5)
 
@@ -173,10 +183,33 @@ for(design in c(1,2,3,4)){
         p_cover_analytical = p_cover_analytical + result[[i]]$p_cover_analytical
         p_cover_analytical_own = p_cover_analytical_own + result[[i]]$p_cover_analytical_own
         p_cover_bootstrap = p_cover_bootstrap + result[[i]]$p_cover_bootstrap
-
+        p_cover_bootstrap_pre_pivoting = p_cover_bootstrap_pre_pivoting + result[[i]]$p_cover_bootstrap_pre_pivoting
         # APE
         all_APE[i, ] = c(result[[i]]$APE_MLE - result[[i]]$APE_true, result[[i]]$APE_mean - result[[i]]$APE_true, result[[i]]$APE_median - result[[i]]$APE_true, result[[i]]$APE_jackknife - result[[i]]$APE_true, result[[i]]$APE_analytical - result[[i]]$APE_true)
         APE_se_formula[i, ] = c(result[[i]]$APE_se_formula)
+        # all bootstrap estimate
+        Boot_estimate_all[i,] = result[[i]]$bootstrap_estimate
+        T_boot = Boot_estimate_all[i,]- (mean(Boot_estimate_all[i,]) - result[[i]]$MLE_estimate) - result[[i]]$MLE_estimate
+        F_hat <- ecdf(T_boot)
+        # 4. Prepivot bootstrap replicates
+        U_boot <- sapply(T_boot, F_hat)
+        # 5. Get CI bounds in uniform space
+        U_q <- quantile(U_boot, probs = c(0.025, 0.975))
+        CI <- quantile(T_boot, probs = U_q)
+        if (CI[1] <= beta && beta <= CI[2]){
+          p_pivoting = p_pivoting + 1
+        }
+
+        # T_boot <- Boot_estimate_all[i,]- (mean(Boot_estimate_all[i,]) - result[[i]]$MLE_estimate) - result[[i]]$MLE_estimate
+        # u_obs <- mean(T_boot <= result[[i]]$MLE_estimate)
+        # U_boot <- sapply(1:bootstrap_time, function(i) mean(T_boot <= T_boot[i]))
+        # u_bounds <- quantile(U_boot, probs = c(0.025, 0.975))
+        # lower <- quantile(T_boot, probs = u_bounds[1])
+        # upper <- quantile(T_boot, probs = u_bounds[2])
+        # CI <- c(lower, upper)
+        # if (CI[1] <= beta && beta <= CI[2]){
+        #   p_pivoting = p_pivoting + 1
+        # }
       }
 
       # beta bias
@@ -190,9 +223,10 @@ for(design in c(1,2,3,4)){
       cover_analytical = p_cover_analytical/length(result)
       cover_analytical_own = p_cover_analytical_own/length(result)
       cover_bootstrap = p_cover_bootstrap/length(result)
-
+      cover_pivoting = p_cover_bootstrap_pre_pivoting/length(result)
+      cover_pivoting_another = p_pivoting/length(result)
       # APE
-      APE_estimate[t_index, ] = apply(all_APE/ result[[1]]$APE_true, 2, mean)
+      APE_estimate[t_index, ] = apply(all_APE / result[[1]]$APE_true, 2, mean)
       APE_deviation[t_index, ] = apply(all_APE/result[[1]]$APE_true, 2, sd)
       cover_APE = apply( all_APE + result[[1]]$APE_true - 1.96*APE_se_formula <= result[[1]]$APE_true & result[[1]]$APE_true <= all_APE + result[[1]]$APE_true + 1.96*APE_se_formula, 2, function(x) formatC(mean(x), format = "f", digits = 3))
 
@@ -200,6 +234,8 @@ for(design in c(1,2,3,4)){
     }
     t_index = t_index + 1
   }
+
+
 
   # save the table
   table_name1 <- paste0('setting_', design, '_bias_estimation', ".csv")
@@ -209,13 +245,15 @@ for(design in c(1,2,3,4)){
   table_name5 <- paste0('setting_', design, '_cover_rate_APE', ".csv")
   table_name6 <- paste0('setting_', design, 'all_APE', ".csv")
   table_name7 <- paste0('setting_', design, 'all_APE_se', ".csv")
+  table_name8 <- paste0('setting_', design, 'APE_bias_estimation', ".csv")
   write.csv(rbind( Estimate_bias, Estimate_deviation ) , table_name1)
-  write.csv(rbind(cover_MLE, cover_bootstrap, cover_jack, cover_analytical,cover_analytical_own) , table_name2)
+  write.csv(rbind(cover_MLE, cover_bootstrap, cover_jack, cover_analytical,cover_analytical_own, cover_pivoting, cover_pivoting_another) , table_name2)
   write.csv(Estimate_se , table_name3)
   write.csv(all_estimator , table_name4)
   write.csv(cover_APE, table_name5)
   write.csv(all_APE , table_name6)
   write.csv(APE_se_formula, table_name7)
+  write.csv(rbind( APE_estimate, APE_deviation) , table_name8)
 
 }
 
