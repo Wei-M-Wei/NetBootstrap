@@ -158,13 +158,16 @@ network_bootstrap = function(y, X, N, bootstrap_time, index, data, link = 'probi
 
   # MLE
   model <-
-    speedglm(y ~ . - 1, data = data_in, family = binomial(link = link))
+    glm(y ~ . - 1, data = data_in, family = binomial(link = link))
   fit = summary(model)
   Hessian_inv = vcov(model)
   cof = unlist(coef(model))
   log_likelihood_estimate <- logLik(model)
   cof[K+1] = sum(cof[(N+K+1):(N+N+K)]) - sum(cof[(K+2):(N+K)])
 
+  APE_MLE = compute_ape_se(model, variables = all.vars(formula(model))[2], K, beta_hat = cof)
+  APE_MLE_estimate = APE_MLE$APE
+  APE_MLE_se = APE_MLE$SE
   # constrained MLE
   data_2 = data_in
   if(is.null(beta_NULL) != 1){
@@ -234,6 +237,7 @@ network_bootstrap = function(y, X, N, bootstrap_time, index, data, link = 'probi
   if(is.null(beta_NULL) != 1){
     res = list(est_MLE = cof, est_mean = est_correct_mean, est_median = est_correct_median, sd = boostrap_sd,
                est_bootstrap_all = cof_B, cof_MLE_NULL = cof_NULL, cof_bootstrap_NULL = cof_B_NULL,
+               APE_MLE_estimate = APE_MLE_estimate, APE_MLE_se = APE_MLE_se,
                log_likelihood_MLE = log_likelihood_estimate, log_likelihood_Bootstrap = log_likelihood_estimate_B,
                log_likelihood_MLE_NULL = log_likelihood_estimate_NULL, log_likelihood_Bootstrap_NULL = log_likelihood_estimate_B_NULL,
                Hessian_MLE = Hessian_inv, Hessian_MLE_NULL = Hessian_inv_NULL, X_origin = as.matrix(X_design), eta = eta, eta_MLE = eta_MLE, data = data
@@ -241,6 +245,7 @@ network_bootstrap = function(y, X, N, bootstrap_time, index, data, link = 'probi
   }
   else{
     res = list(est_MLE = cof, est_mean = est_correct_mean, est_median = est_correct_median, sd = boostrap_sd, est_bootstrap_all = cof_B,
+               APE_MLE_estimate = APE_MLE_estimate, APE_MLE_se = APE_MLE_se,
                log_likelihood_MLE = log_likelihood_estimate, log_likelihood_Bootstrap = log_likelihood_estimate_B,
                Hessian_MLE = Hessian_inv, X_origin = as.matrix(X_design), eta = eta, eta_MLE = eta_MLE, data = data
     )
@@ -404,9 +409,7 @@ split_jackknife = function(y, X, N, index, data, link = 'probit', beta_NULL = NU
   # calculate the X'beta + pi, formed as a matrix
   cov_sum_1 = X_save[,1] * cof[1]
   cov_sum_2 = X_save[,-1] %*% cof[-1]
-  cov_sum = matrix(cov_sum_1 + cov_sum_2, N-1, N)
-  cov_sum = shift_lower_triangle_and_add_zero_diag(cov_sum)
-  cov_sum[row(cov_sum) == col(cov_sum)] = 0
+  cov_sum = vector_to_matrix(cov_sum_1+cov_sum_2, N, ind1 = data_j[,index[1]], ind2 = data_j[,index[2]])
   X_to = as.matrix(X)
   y_to = y
   se_corrected = rep(0, K)
@@ -438,10 +441,8 @@ split_jackknife = function(y, X, N, index, data, link = 'probit', beta_NULL = NU
     # W_hat
     X_into = matrix_to_panel_df(X)
     weight = matrix_to_panel_df(small_w)$X
-    weight[which(weight==0)] = 1
     re = get_weighted_projection_fitted_exclude_t_eq_i(X_into$X, weight, X_into$id, X_into$time)
-    re_matrix = matrix(re, N-1, N)
-    re_matrix = shift_lower_triangle_and_add_zero_diag(re_matrix)
+    re_matrix = vector_to_matrix(re, N, ind1 = X_into$id, ind2 = X_into$time)
     tilde_X_list[[index_covariate]] = X - re_matrix
   }
 
@@ -507,7 +508,7 @@ analytical_Amrei = function(y, X, N, index, data, link = 'probit', L = 1, beta_N
     X = data[,colnames(X)]
   }
   mod <- alpaca::feglm(y ~ X | index.1 + index.2, data = data, family = binomial(link))
-  return(est = biasCorr(mod, L = L, panel.structure = c( "network")))
+  return(list(est_MLE = mod, est = biasCorr(mod, L = L, panel.structure = c( "network"))))
 
 }
 
@@ -576,16 +577,14 @@ analytical_corrected = function(y, X, N, index, data, link = 'probit', L = 1, be
   log_likelihood_estimate <- logLik(model)
   cof[K+1] = sum(cof[(N+K+1):(N+N+K)]) - sum(cof[(K+2):(N+K)])
 
-
-  ##################
+  ############################variables = ########
   # se
   ##################
 
   est = cof
   cov_sum_1 = X_design[,1] * est[1]
   cov_sum_2 = X_design[,-1] %*% est[-1]
-  cov_sum = matrix(cov_sum_1 + cov_sum_2, N-1, N)
-  cov_sum = shift_lower_triangle_and_add_zero_diag(cov_sum)
+  cov_sum = vector_to_matrix(cov_sum_1+cov_sum_2, N, ind1 = data[,index[1]], ind2 = data[,index[2]])
   X_to = as.matrix(X)
   y_to = y
   estimate_analytical = rep(0, K)
@@ -621,10 +620,8 @@ analytical_corrected = function(y, X, N, index, data, link = 'probit', L = 1, be
     # W_hat
     X_into = matrix_to_panel_df(X)
     weight = matrix_to_panel_df(small_w)$X
-    weight[which(weight==0)] = 1
     re = get_weighted_projection_fitted_exclude_t_eq_i(X_into$X, weight, X_into$id, X_into$time)
-    re_matrix = matrix(re, N-1, N)
-    re_matrix = shift_lower_triangle_and_add_zero_diag(re_matrix)
+    re_matrix = vector_to_matrix(re, N, ind1 = X_into$id, ind2 = X_into$time)
     tilde_X_list[[index_covariate]] = X - re_matrix
     D_hat[index_covariate,] = -(0.5 / (N-1)) * sum(colSums((H * dd_F_fix * tilde_X_list[[index_covariate]]) * (1 - diag(N))) / colSums(small_w * (1 - diag(N))))
     B_hat[index_covariate,] = -(0.5/N) * compute_B_hat(2* H * (y - Phi_XB), small_w * tilde_X_list[[index_covariate]], H * dd_F_fix * tilde_X_list[[index_covariate]], small_w, L)
@@ -710,6 +707,7 @@ get_APE_bootstrap <- function(y, X, N, data, fit, model = 'probit'){
   return(res)
 }
 
+
 #' @export
 get_APE_analytical<- function(y, X, N, data, index, fit, L = 1, model = 'probit'){
   K = dim(X)[2]
@@ -764,34 +762,19 @@ get_APE_analytical<- function(y, X, N, data, index, fit, L = 1, model = 'probit'
 
     X = vector_to_matrix(X, N, ind1 = data[,index[1]], ind2 = data[,index[2]])
     y = vector_to_matrix(y_to, N, ind1 = data[,index[1]], ind2 = data[,index[2]])
-    APE_estimate = matrix(APE_estimate, N-1,N)
-    APE_estimate = shift_lower_triangle_and_add_zero_diag(APE_estimate)
-    d_APE_estimate = matrix(d_APE_estimate, N-1,N)
-    d_APE_estimate = shift_lower_triangle_and_add_zero_diag(d_APE_estimate)
-    dd_APE_estimate = matrix(dd_APE_estimate, N-1,N)
-    dd_APE_estimate = shift_lower_triangle_and_add_zero_diag(dd_APE_estimate)
-    APE_estimate_MLE = matrix(APE_estimate_MLE, N-1,N)
-    APE_estimate_MLE = shift_lower_triangle_and_add_zero_diag(APE_estimate_MLE)
-    d_APE_estimate_MLE = matrix(d_APE_estimate_MLE, N-1,N)
-    d_APE_estimate_MLE = shift_lower_triangle_and_add_zero_diag(d_APE_estimate_MLE)
-    dd_APE_estimate_MLE = matrix(dd_APE_estimate_MLE, N-1,N)
-    dd_APE_estimate_MLE = shift_lower_triangle_and_add_zero_diag(dd_APE_estimate_MLE)
+    APE_estimate = vector_to_matrix( APE_estimate, N, ind1 = data[,index[1]], ind2 = data[,index[2]])
+    d_APE_estimate = vector_to_matrix( d_APE_estimate, N, ind1 = data[,index[1]], ind2 = data[,index[2]])
+    dd_APE_estimate = vector_to_matrix( dd_APE_estimate, N, ind1 = data[,index[1]], ind2 = data[,index[2]])
+    APE_estimate_MLE = vector_to_matrix( APE_estimate_MLE, N, ind1 = data[,index[1]], ind2 = data[,index[2]])
+    d_APE_estimate_MLE = vector_to_matrix( d_APE_estimate_MLE, N, ind1 = data[,index[1]], ind2 = data[,index[2]])
+    dd_APE_estimate_MLE = vector_to_matrix( dd_APE_estimate_MLE, N, ind1 = data[,index[1]], ind2 = data[,index[2]])
 
     APE_MLE_list[[k]] =  APE_estimate_MLE
     d_APE_MLE_list[[k]] =  d_APE_estimate_MLE
 
-
-    y[row(y) == col(y)] = 0
-
-    cov_sum = matrix(eta_MLE, N-1,N)
-    cov_sum = shift_lower_triangle_and_add_zero_diag(cov_sum)
-    cov_sum[row(cov_sum) == col(cov_sum)] = 0
-
+    cov_sum = vector_to_matrix( t(eta_MLE), N, ind1 = data[,index[1]], ind2 = data[,index[2]])
     Phi_XB <- pnorm(cov_sum)  # CDF (Φ(Xβ))
     phi_XB <- dnorm(cov_sum)  # PDF (φ(Xβ))
-
-    Phi_XB[row(cov_sum) == col(cov_sum)] = 0
-    phi_XB[row(cov_sum) == col(cov_sum)] = 0
     Phi_XB <- pmax(Phi_XB, 1e-9)
     Phi_XB <- pmin(Phi_XB, 1 - 1e-9)
 
@@ -806,12 +789,11 @@ get_APE_analytical<- function(y, X, N, data, index, fit, L = 1, model = 'probit'
     # B_hat
     X_into = matrix_to_panel_df(-d_APE_estimate_MLE/small_w)
     weight = matrix_to_panel_df(small_w)$X
-
     Psi = get_weighted_projection_fitted_exclude_t_eq_i(X_into$X, weight, X_into$id, X_into$time)
-    Psi_list[[k]] = matrix(Psi, N-1, N)
-    Psi_list[[k]]= shift_lower_triangle_and_add_zero_diag(Psi_list[[k]])
+    Psi_list[[k]]= vector_to_matrix(Psi, N, ind1 = X_into$id, ind2 = X_into$time)
     tilde_Psi_list[[k]] = -d_APE_estimate_MLE/small_w - Psi_list[[k]]
     diag(tilde_Psi_list[[k]]) = 0
+
     # D_hat
     D_hat = (0.5 / (N-1)) * sum(colSums((dd_APE_estimate_MLE -  Psi_list[[k]] * H * dd_F_fix) * (1 - diag(N))) / colSums(small_w * (1 - diag(N))))
 
@@ -824,8 +806,7 @@ get_APE_analytical<- function(y, X, N, data, index, fit, L = 1, model = 'probit'
     X_into = matrix_to_panel_df(X)
     weight = matrix_to_panel_df(small_w)$X
     re = get_weighted_projection_fitted_exclude_t_eq_i(X_into$X, weight, X_into$id, X_into$time)
-    re_matrix = matrix(re, N-1, N)
-    re_matrix = shift_lower_triangle_and_add_zero_diag(re_matrix)
+    re_matrix = vector_to_matrix(re, N, ind1 = X_into$id, ind2 = X_into$time)
     tilde_X_list[[k]] = X - re_matrix
   }
 
@@ -854,19 +835,19 @@ get_APE_analytical<- function(y, X, N, data, index, fit, L = 1, model = 'probit'
   for (i in 1:N) {
     for (j in 1:N) {
       if(j!=i){
-        tau[i,j,] = as.matrix(t(D_beta_APE) %*% solve(W_hat)) * as.matrix(t(H[i,j] * (y[i,j] - Phi_XB[i,j]) * tilde_X_array[i,j,])) - Psi_array[i,j,] * H[i,j] * (y[i,j] - Phi_XB[i,j])
+        tau[i,j,] = as.matrix(t(D_beta_APE) %*% solve(W_hat)) * as.matrix(H[i,j] * (y[i,j] - Phi_XB[i,j]) * tilde_X_array[i,j,]) - Psi_array[i,j,] * H[i,j] * (y[i,j] - Phi_XB[i,j])
       }
     }
   }
 
   tilde_APE_MLE_array = array(0, dim = c(N, N, K))
   for (k in 1:K) {
-    tilde_APE_MLE_array[,,k] <-  APE_MLE_array[,,k] - colMeans(APE_MLE_array[,,k])
+    tilde_APE_MLE_array[,,k] <-  sweep(APE_MLE_array[,,k], 2, colMeans(APE_MLE_array[,,k]),  FUN = "-")
     diag(tilde_APE_MLE_array[,,k]) = 0
     APE_MLE[k] = sum(APE_MLE_array[,,k])/(N*(N-1))
   }
 
-  se = sqrt( diag(compute_expression_array(tilde_APE_MLE_array, tau)) )/(N*(N-1))
+  se =  sqrt( diag(compute_expression_array(tilde_APE_MLE_array, tau)) )/(N*(N-1))
   res = list(APE_MLE = APE_MLE, APE = APE_analytical, se = se)
 
   return(res)
@@ -965,21 +946,19 @@ get_APE_jackknife <- function(y, X, N, index, data, fit, L = 1, model = 'probit'
 
     X = vector_to_matrix(X, N, ind1 = data[,index[1]], ind2 = data[,index[2]])
     y = vector_to_matrix(y_to, N, ind1 = data[,index[1]], ind2 = data[,index[2]])
-    APE_estimate_MLE = matrix(APE_estimate_MLE, N-1,N)
-    APE_estimate_MLE = shift_lower_triangle_and_add_zero_diag(APE_estimate_MLE)
-    d_APE_estimate_MLE = matrix(d_APE_estimate_MLE, N-1,N)
-    d_APE_estimate_MLE = shift_lower_triangle_and_add_zero_diag(d_APE_estimate_MLE)
-    dd_APE_estimate_MLE = matrix(dd_APE_estimate_MLE, N-1,N)
-    dd_APE_estimate_MLE = shift_lower_triangle_and_add_zero_diag(dd_APE_estimate_MLE)
+    APE_estimate = vector_to_matrix( APE_estimate, N, ind1 = data[,index[1]], ind2 = data[,index[2]])
+    d_APE_estimate = vector_to_matrix( d_APE_estimate, N, ind1 = data[,index[1]], ind2 = data[,index[2]])
+    dd_APE_estimate = vector_to_matrix( dd_APE_estimate, N, ind1 = data[,index[1]], ind2 = data[,index[2]])
+    APE_estimate_MLE = vector_to_matrix( APE_estimate_MLE, N, ind1 = data[,index[1]], ind2 = data[,index[2]])
+    d_APE_estimate_MLE = vector_to_matrix( d_APE_estimate_MLE, N, ind1 = data[,index[1]], ind2 = data[,index[2]])
+    dd_APE_estimate_MLE = vector_to_matrix( dd_APE_estimate_MLE, N, ind1 = data[,index[1]], ind2 = data[,index[2]])
+
     APE_MLE_list[[k]] =  APE_estimate_MLE
     d_APE_MLE_list[[k]] =  d_APE_estimate_MLE
-    cov_sum = matrix(eta_MLE, N-1,N)
-    cov_sum = shift_lower_triangle_and_add_zero_diag(cov_sum)
-    cov_sum[row(cov_sum) == col(cov_sum)] = 0
+
+    cov_sum = vector_to_matrix( t(eta_MLE), N, ind1 = data[,index[1]], ind2 = data[,index[2]])
     Phi_XB <- pnorm(cov_sum)  # CDF (Φ(Xβ))
     phi_XB <- dnorm(cov_sum)  # PDF (φ(Xβ))
-    Phi_XB[row(cov_sum) == col(cov_sum)] = 0
-    phi_XB[row(cov_sum) == col(cov_sum)] = 0
     Phi_XB <- pmax(Phi_XB, 1e-9)
     Phi_XB <- pmin(Phi_XB, 1 - 1e-9)
 
@@ -995,8 +974,7 @@ get_APE_jackknife <- function(y, X, N, index, data, fit, L = 1, model = 'probit'
     X_into = matrix_to_panel_df(-d_APE_estimate_MLE/small_w)
     weight = matrix_to_panel_df(small_w)$X
     Psi = get_weighted_projection_fitted_exclude_t_eq_i(X_into$X, weight, X_into$id, X_into$time)
-    Psi_list[[k]] = matrix(Psi, N-1, N)
-    Psi_list[[k]]= shift_lower_triangle_and_add_zero_diag(Psi_list[[k]])
+    Psi_list[[k]]= vector_to_matrix(Psi, N, ind1 = X_into$id, ind2 = X_into$time)
     tilde_Psi_list[[k]] = -d_APE_estimate_MLE/small_w - Psi_list[[k]]
     diag(tilde_Psi_list[[k]]) = 0
 
@@ -1004,9 +982,9 @@ get_APE_jackknife <- function(y, X, N, index, data, fit, L = 1, model = 'probit'
     X_into = matrix_to_panel_df(X)
     weight = matrix_to_panel_df(small_w)$X
     re = get_weighted_projection_fitted_exclude_t_eq_i(X_into$X, weight, X_into$id, X_into$time)
-    re_matrix = matrix(re, N-1, N)
-    re_matrix = shift_lower_triangle_and_add_zero_diag(re_matrix)
+    re_matrix = vector_to_matrix(re, N, ind1 = X_into$id, ind2 = X_into$time)
     tilde_X_list[[k]] = X - re_matrix
+
   }
 
   tilde_X_array <- array(unlist(tilde_X_list), dim = c(N, N, K))
@@ -1040,7 +1018,7 @@ get_APE_jackknife <- function(y, X, N, index, data, fit, L = 1, model = 'probit'
 
   tilde_APE_MLE_array = array(0, dim = c(N, N, K))
   for (k in 1:K) {
-    tilde_APE_MLE_array[,,k] <-  APE_MLE_array[,,k] - colMeans(APE_MLE_array[,,k])
+    tilde_APE_MLE_array[,,k] <-  sweep(APE_MLE_array[,,k], 2, colMeans(APE_MLE_array[,,k]),  FUN = "-")
     diag(tilde_APE_MLE_array[,,k]) = 0
     APE_MLE[k] = sum(APE_MLE_array[,,k])/(N*(N-1))
   }

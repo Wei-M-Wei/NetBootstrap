@@ -163,8 +163,10 @@ matrix_to_panel_df <- function(X_mat) {
   id <- rep(1:n_rows, times = n_cols)
   time <- rep(1:n_cols, each = n_rows)
 
+  df = data.frame(id = id, time = time, X = X_vec)
+  df <- df[df$id != df$time, ]
   # Return data frame
-  return(data.frame(id = id, time = time, X = X_vec))
+  return(df)
 }
 
 compute_B_hat <- function(D, E, B, C, L) {
@@ -193,6 +195,7 @@ compute_B_hat <- function(D, E, B, C, L) {
 
   return(result)
 }
+
 
 compute_expression_array <- function(A, B) {
   N <- dim(A)[1]
@@ -231,4 +234,75 @@ compute_expression_array <- function(A, B) {
   }
 
   return(total_sum)
+}
+
+
+compute_ape_se <- function(model, variables = NULL, K, beta_hat) {
+  stopifnot(inherits(model, "glm"))
+
+  link <- model$family$link
+  if (!link %in% c("probit", "logit")) stop("Only probit and logit models are supported.")
+
+  X <- model.matrix(model)
+  vcov_beta <- vcov(model)
+  vcov_beta[is.na(vcov_beta)] <- 0
+  eta <- X %*% beta_hat
+  N <- nrow(X)
+
+  # Set up link-specific functions
+  pdf_fun <- switch(link,
+                    "probit" = dnorm,
+                    "logit"  = dlogis)
+  cdf_fun <- switch(link,
+                    "probit" = pnorm,
+                    "logit"  = plogis)
+
+  if (is.null(variables)) {
+    variables <- colnames(X)
+  }
+
+  results <- data.frame(variable = character(), APE = numeric(), SE = numeric(), stringsAsFactors = FALSE)
+
+  for (var in variables) {
+    var_index <- which(colnames(X) == var)
+    if (length(var_index) == 0) next
+
+    if (is.numeric(X[, var_index]) && length(unique(X[, var_index])) == 2) {
+      is_binary = TRUE
+    }else{
+      is_binary = FALSE
+    }
+
+    if (is_binary) {
+      # Binary variable: APE via discrete difference
+      X1 <- X; X1[, var_index] <- max(X1[, var_index])
+      X0 <- X; X0[, var_index] <- min(X0[, var_index])
+      eta1 <- X1 %*% beta_hat
+      eta0 <- X0 %*% beta_hat
+      p1 <- cdf_fun(eta1)
+      p0 <- cdf_fun(eta0)
+      ape <- mean(p1 - p0)/(max(X1[, var_index]) - min(X0[, var_index]))
+
+      pdf_eta1 <- pdf_fun(eta1)
+      pdf_eta0 <- pdf_fun(eta0)
+      pdf_eta1_rep <- matrix(pdf_eta1, nrow = N, ncol = ncol(X), byrow = FALSE)
+      pdf_eta0_rep <- matrix(pdf_eta0, nrow = N, ncol = ncol(X), byrow = FALSE)
+
+      grad_i <- (pdf_eta1_rep * X1 - pdf_eta0_rep * X0)
+      grad <- colMeans(grad_i)
+
+    } else {
+      # Continuous variable: APE via average derivative
+      pdf_eta <- pdf_fun(eta)
+      ape <- mean(pdf_eta * beta_hat[var_index])
+      pdf_eta_rep <- matrix(pdf_eta, nrow = N, ncol = ncol(X), byrow = FALSE)
+      variable_indicator <- matrix(rep(colnames(X) == var, each = N), nrow = N)
+      grad <- colMeans(pdf_eta_rep * X) * beta_hat[var_index] + colMeans(pdf_eta_rep * variable_indicator)
+    }
+
+    se <- sqrt(t(grad) %*% vcov_beta %*% grad)
+    results <- rbind(results, data.frame(variable = var, APE = ape, SE = se))
+  }
+
+  return(results)
 }
