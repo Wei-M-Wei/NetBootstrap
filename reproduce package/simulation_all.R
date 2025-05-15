@@ -10,21 +10,21 @@ library(margins)
 source('simulation data.R')
 packages_to_export <- c("dplyr", 'NetBootstrap', 'alpaca', 'speedglm', 'fixest', 'margins')
 num_cores <- detectCores()
-cl <- makeCluster(num_cores-22)
+cl <- makeCluster(num_cores-5)
 registerDoParallel(cl)
 
 # probit model network
-N = 50
+N = 20
 N_seq = c(N)
 
 # bootstrap times
-bootstrap_time = 50
+bootstrap_time = 5
 
 # repitition times
-mle_num = 300
-design = 1
-for(design in c(1,2,3,4)){
+mle_num = 3
 
+for(design in c(1,2,3,4)){
+  start_time <- Sys.time()
   # empty matrix
   Estimate_bias = matrix(0, length(N_seq), 6)
   Estimate_se = matrix(0, length(N_seq), 6)
@@ -253,19 +253,19 @@ for(design in c(1,2,3,4)){
     }
     t_index = t_index + 1
   }
-
-
+  end_time <- Sys.time()
+  running_time = end_time - start_time
 
   # save the table
-  table_name1 <- paste0('setting_', design, '_bias_estimation', ".csv")
-  table_name2 <- paste0('setting_', design, '_cover_rate', ".csv")
-  table_name3 <- paste0('setting_', design, '_se', ".csv")
-  table_name4 <- paste0('setting_', design, 'all_estimator', ".csv")
-  table_name5 <- paste0('setting_', design, '_cover_rate_APE', ".csv")
-  table_name6 <- paste0('setting_', design, 'all_APE', ".csv")
-  table_name7 <- paste0('setting_', design, 'all_APE_se', ".csv")
-  table_name8 <- paste0('setting_', design, 'APE_bias_estimation', ".csv")
-  table_name9 <- paste0('setting_', design, 'all_APE_se_own', ".csv")
+  table_name1 <- paste0('setting_', design, '_bias_estimation_time', running_time ,  ".csv")
+  table_name2 <- paste0('setting_', design, '_cover_rate', running_time , ".csv")
+  table_name3 <- paste0('setting_', design, 'all_se', running_time , ".csv")
+  table_name4 <- paste0('setting_', design, 'all_estimator', running_time , ".csv")
+  table_name5 <- paste0('setting_', design, '_cover_rate_APE', running_time , ".csv")
+  table_name6 <- paste0('setting_', design, 'all_APE', running_time , ".csv")
+  table_name7 <- paste0('setting_', design, 'all_APE_se', running_time , ".csv")
+  table_name8 <- paste0('setting_', design, 'APE_bias_estimation', running_time , ".csv")
+  table_name9 <- paste0('setting_', design, 'all_APE_se_own', running_time, ".csv")
   write.csv(rbind( Estimate_bias, Estimate_deviation ) , table_name1)
   write.csv(rbind(cover_MLE, cover_bootstrap, cover_jack, cover_analytical,cover_analytical_own, cover_pivoting, cover_pivoting_another) , table_name2)
   write.csv(Estimate_se , table_name3)
