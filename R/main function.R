@@ -158,7 +158,7 @@ network_bootstrap = function(y, X, N, bootstrap_time, index, data, link = 'probi
 
   # MLE
   model <-
-    glm(y ~ . - 1, data = data_in, family = binomial(link = link))
+    glm(y ~ . - 1, data = data_in, family = binomial(link = link), control = glm.control(epsilon = 1e-10))
   fit = summary(model)
   Hessian_inv = vcov(model)
   cof = unlist(coef(model))
@@ -175,7 +175,7 @@ network_bootstrap = function(y, X, N, bootstrap_time, index, data, link = 'probi
     formula <- as.formula( paste("y ~ -1 +", paste(colnames(data_2[,-2])[-1], collapse = " + "), "+ offset(offset_term)"))
     data_2$offset_term <- beta_NULL * X_design[,1]
     model_NULL <-
-      glm(formula = formula, data = data_2, family=binomial(link = link))
+      glm(formula = formula, data = data_2, family=binomial(link = link), control = glm.control(epsilon = 1e-10))
     fit_NULL = summary(model_NULL)
     Hessian_inv_NULL = vcov(model_NULL)
     cof_NULL =  c(beta_NULL, unlist(coef(model_NULL)))
@@ -197,7 +197,7 @@ network_bootstrap = function(y, X, N, bootstrap_time, index, data, link = 'probi
     Y = as.numeric(X_design %*% cof > epsi_it)
     data_boostrap <- data.frame(y = Y, X = X_design)
     model_B <-
-      glm(y ~ . - 1, data = data_boostrap, family = binomial(link = link))
+      glm(y ~ . - 1, data = data_boostrap, family = binomial(link = link), control = glm.control(epsilon = 1e-10))
     fit_B = summary(model_B)
     cof_B = rbind(cof_B, unlist(coef(model_B)))
     log_likelihood_estimate_B <- rbind(log_likelihood_estimate_B, logLik(model_B))
@@ -209,7 +209,7 @@ network_bootstrap = function(y, X, N, bootstrap_time, index, data, link = 'probi
       formula <- as.formula( paste("y ~ -1 +", paste(colnames(data_2[,-2])[-1], collapse = " + "), "+ offset(offset_term)"))
       data_2$offset_term <- cof[1] * X_design[,1]
       model_B_NULL <-
-        glm(formula = formula, data = data_2, family=binomial(link = link))
+        glm(formula = formula, data = data_2, family=binomial(link = link), control = glm.control(epsilon = 1e-10))
       fit_B_NULL = summary(model_B_NULL)
       cof_B_NULL = rbind(cof_B_NULL, c(beta_NULL, unlist(coef(model_B_NULL))))
       log_likelihood_estimate_B_NULL <- rbind(log_likelihood_estimate_B_NULL, logLik(model_B_NULL))
@@ -218,8 +218,34 @@ network_bootstrap = function(y, X, N, bootstrap_time, index, data, link = 'probi
 
   # get the final results
   cof_B[,K+1] = apply(cof_B[,(N+K+1):(N+N+K)],1,sum) - apply(cof_B[,(K+2):(N+K)],1,sum)
-  eta = cof_B %*% t(X_design)
-  eta_MLE = cof %*% t(X_design)
+
+  # save the original matrix X
+  X_to = X
+  # calculate the eta = xbeta + alpda_i + gamma_j
+  alpha <- cof_B[,(K + 1):(K + N)]
+  gamma <- cof_B[,(K + N + 1):(K + N + N)]
+  # Generate implied id and time indices
+  id_idx <- rep(1:N, each = N)     # id changes slowly
+  time_idx <- rep(1:N, times = N)  # time changes quickly
+  keep <- id_idx != time_idx
+  alpha_sub <- alpha[,id_idx[keep]]
+  gamma_sub <- gamma[,time_idx[keep]]
+  # Reconstruct eta = Xβ + α_i + γ_t
+  eta = cof_B[,1:K] %*% t( X_to ) + (alpha_sub + gamma_sub)
+
+  # calculate the eta = xbeta + alpda_i + gamma_j
+  alpha <- cof[(K + 1):(K + N)]
+  gamma <- cof[(K + N + 1):(K + N + N)]
+  # Generate implied id and time indices
+  id_idx <- rep(1:N, each = N)     # id changes slowly
+  time_idx <- rep(1:N, times = N)  # time changes quickly
+  keep <- id_idx != time_idx
+  alpha_sub <- alpha[id_idx[keep]]
+  gamma_sub <- gamma[time_idx[keep]]
+  # Reconstruct eta = Xβ + α_i + γ_t
+  eta_MLE = cof[1:K] %*% t( X_to ) + (alpha_sub + gamma_sub)
+
+
   cof_boost_mean = apply(cof_B, 2, mean)
   cof_boost_median = apply(cof_B, 2, median)
   est_correct_mean = cof - (cof_boost_mean - cof)
@@ -303,11 +329,12 @@ split_jackknife = function(y, X, N, index, data, link = 'probit', beta_NULL = NU
   X_design = cbind(X, fix)
   X_design = apply(X_design, 2, as.numeric)
   X_save = X_design
+  X_to = X
   data_in <- data.frame(y = y, X = X_design)
 
   # MLE
   model <-
-    speedglm(y ~ . - 1, data = data_in, family = binomial(link = link))
+    speedglm(y ~ . - 1, data = data_in, family = binomial(link = link), control = glm.control(epsilon = 1e-10))
   fit = summary(model)
   Hessian_inv = vcov(model)
   cof = unlist(coef(model))
@@ -396,8 +423,29 @@ split_jackknife = function(y, X, N, index, data, link = 'probit', beta_NULL = NU
   cof_jack_all = cof_j
 
 
-  eta = cof_jack_all %*% t(X_save)
-  eta_MLE = cof %*% t(X_save)
+  # calculate the eta = xbeta + alpda_i + gamma_j
+  alpha <- cof_jack_all[,(K + 1):(K + N)]
+  gamma <- cof_jack_all[,(K + N + 1):(K + N + N)]
+  # Generate implied id and time indices
+  id_idx <- rep(1:N, each = N)     # id changes slowly
+  time_idx <- rep(1:N, times = N)  # time changes quickly
+  keep <- id_idx != time_idx
+  alpha_sub <- alpha[,id_idx[keep]]
+  gamma_sub <- gamma[,time_idx[keep]]
+  # Reconstruct eta = Xβ + α_i + γ_t
+  eta = cof_jack_all[,1:K] %*% t( X_to ) + (alpha_sub + gamma_sub)
+
+  # calculate the eta = xbeta + alpda_i + gamma_j
+  alpha <- cof[(K + 1):(K + N)]
+  gamma <- cof[(K + N + 1):(K + N + N)]
+  # Generate implied id and time indices
+  id_idx <- rep(1:N, each = N)     # id changes slowly
+  time_idx <- rep(1:N, times = N)  # time changes quickly
+  keep <- id_idx != time_idx
+  alpha_sub <- alpha[id_idx[keep]]
+  gamma_sub <- gamma[time_idx[keep]]
+  # Reconstruct eta = Xβ + α_i + γ_t
+  eta_MLE = cof[1:K] %*% t( X_to ) + (alpha_sub + gamma_sub)
 
 
   ################
@@ -507,8 +555,8 @@ analytical_Amrei = function(y, X, N, index, data, link = 'probit', L = 1, beta_N
     y = data$y
     X = data[,colnames(X)]
   }
-  mod <- alpaca::feglm(y ~ X | index.1 + index.2, data = data, family = binomial(link))
-  return(list(est_MLE = mod, est = biasCorr(mod, L = L, panel.structure = c( "network"))))
+  mod <- alpaca::feglm(y ~ X | index.1 + index.2, data = data, family = binomial(link), control = feglmControl( dev.tol = 1e-10, center.tol = 1e-10))
+  return(list(est_MLE = mod, est = biasCorr(mod, L = L, panel.structure = c( "classic"))))
 
 }
 
@@ -570,7 +618,7 @@ analytical_corrected = function(y, X, N, index, data, link = 'probit', L = 1, be
 
   # MLE
   model <-
-    speedglm(y ~ . - 1, data = data_in, family = binomial(link = link))
+    speedglm(y ~ . - 1, data = data_in, family = binomial(link = link), control = glm.control(epsilon = 1e-10) )
   fit = summary(model)
   Hessian_inv = vcov(model)
   cof = unlist(coef(model))
@@ -580,13 +628,23 @@ analytical_corrected = function(y, X, N, index, data, link = 'probit', L = 1, be
   ############################variables = ########
   # se
   ##################
-
-  est = cof
-  cov_sum_1 = X_design[,1] * est[1]
-  cov_sum_2 = X_design[,-1] %*% est[-1]
-  cov_sum = vector_to_matrix(cov_sum_1+cov_sum_2, N, ind1 = data[,index[1]], ind2 = data[,index[2]])
   X_to = as.matrix(X)
   y_to = y
+
+  # calculate the eta = xbeta + alpda_i + gamma_j
+  alpha <- cof[(K + 1):(K + N)]
+  gamma <- cof[(K + N + 1):(K + N + N)]
+  # Generate implied id and time indices
+  id_idx <- rep(1:N, each = N)     # id changes slowly
+  time_idx <- rep(1:N, times = N)  # time changes quickly
+  keep <- id_idx != time_idx
+  alpha_sub <- alpha[id_idx[keep]]
+  gamma_sub <- gamma[time_idx[keep]]
+  # Reconstruct eta = Xβ + α_i + γ_t
+  eta_MLE = cof[1:K] %*% t( X_to ) + (alpha_sub + gamma_sub)
+
+  est = cof
+  cov_sum = vector_to_matrix( as.vector(eta_MLE), N, ind1 = data[,index[1]], ind2 = data[,index[2]])
   estimate_analytical = rep(0, K)
   estimate_analytical_another = rep(0, K)
   se = rep(0,K)
@@ -621,6 +679,7 @@ analytical_corrected = function(y, X, N, index, data, link = 'probit', L = 1, be
     X_into = matrix_to_panel_df(X)
     weight = matrix_to_panel_df(small_w)$X
     re = get_weighted_projection_fitted_exclude_t_eq_i(X_into$X, weight, X_into$id, X_into$time)
+    # re = get_weighted_fe_projection(X = X_into$X, weight = weight, id = X_into$id, time = X_into$time)
     re_matrix = vector_to_matrix(re, N, ind1 = X_into$id, ind2 = X_into$time)
     tilde_X_list[[index_covariate]] = X - re_matrix
     D_hat[index_covariate,] = -(0.5 / (N-1)) * sum(colSums((H * dd_F_fix * tilde_X_list[[index_covariate]]) * (1 - diag(N))) / colSums(small_w * (1 - diag(N))))
@@ -644,8 +703,6 @@ analytical_corrected = function(y, X, N, index, data, link = 'probit', L = 1, be
 
   # estimate
   estimate_analytical_another = est[1:K] - solve(W_hat)%*%B_hat*(1/(N-1)) - solve(W_hat)%*%D_hat*(1/N)
-  se =  sqrt( diag(solve(W_hat)) /(N*(N-1)) )
-
 
   data_2 <- data_in
   formula <- as.formula( paste("y ~ -1 +", paste(colnames(data_2[,-seq(2,K+1,1)])[-1], collapse = " + "), "+ offset(offset_term)"))
@@ -661,8 +718,75 @@ analytical_corrected = function(y, X, N, index, data, link = 'probit', L = 1, be
   estimate_analytical_another = c(estimate_analytical_another, unlist(coef(model_j_2)))
   estimate_analytical_another[K+1] = sum(estimate_analytical_another[(N+K+1):(N+N+K)]) - sum(estimate_analytical_another[(K+2):(N+K)])
 
-  eta = estimate_analytical_another %*% t(X_design)
-  eta_MLE = cof %*% t(X_design)
+
+  # calculate the eta = xbeta + alpda_i + gamma_j
+  alpha <- estimate_analytical_another[(K + 1):(K + N)]
+  gamma <- estimate_analytical_another[(K + N + 1):(K + N + N)]
+  # Generate implied id and time indices
+  id_idx <- rep(1:N, each = N)     # id changes slowly
+  time_idx <- rep(1:N, times = N)  # time changes quickly
+  keep <- id_idx != time_idx
+  alpha_sub <- alpha[id_idx[keep]]
+  gamma_sub <- gamma[time_idx[keep]]
+  # Reconstruct eta = Xβ + α_i + γ_t
+  eta = estimate_analytical_another[1:K] %*% t( X_to ) + (alpha_sub + gamma_sub)
+
+
+  # re-update the standard error
+  cov_sum = vector_to_matrix( eta, N, ind1 = data[,index[1]], ind2 = data[,index[2]])
+  tilde_X_list <- vector("list", K)
+  W_hat <- matrix(0, nrow = K, ncol = K)
+
+  for (index_covariate in 1:K) {
+
+    # X is a matrix of a single covariate, and the same for y
+    X = vector_to_matrix(X_to[,index_covariate], N, ind1 = data[,index[1]], ind2 = data[,index[2]])
+    y = vector_to_matrix(y_to, N, ind1 = data[,index[1]], ind2 = data[,index[2]])
+    y[row(y) == col(y)] = 0
+
+    Phi_XB <- pnorm(cov_sum)  # CDF (Φ(Xβ))
+    phi_XB <- dnorm(cov_sum)  # PDF (φ(Xβ))
+    dd_F_fix = -cov_sum * phi_XB
+    ddd_F_fix = cov_sum^2 * phi_XB - phi_XB
+    Phi_XB[row(Phi_XB) == col(Phi_XB)] = 0
+    phi_XB[row(phi_XB) == col(phi_XB)] = 0
+    Phi_XB <- pmax(Phi_XB, 1e-9)
+    Phi_XB <- pmin(Phi_XB, 1 - 1e-9)
+
+
+    #### Another way to calculate the bias corrected
+    # another way to calculate the analytical corrected estimate
+    H = phi_XB/(Phi_XB*(1-Phi_XB))
+    small_w = H * phi_XB
+
+    # W_hat
+    X_into = matrix_to_panel_df(X)
+    weight = matrix_to_panel_df(small_w)$X
+    re = get_weighted_projection_fitted_exclude_t_eq_i(X_into$X, weight, X_into$id, X_into$time)
+    # re = get_weighted_fe_projection(X = X_into$X, weight = weight, id = X_into$id, time = X_into$time)
+    re_matrix = vector_to_matrix(re, N, ind1 = X_into$id, ind2 = X_into$time)
+    tilde_X_list[[index_covariate]] = X - re_matrix
+    D_hat[index_covariate,] = -(0.5 / (N-1)) * sum(colSums((H * dd_F_fix * tilde_X_list[[index_covariate]]) * (1 - diag(N))) / colSums(small_w * (1 - diag(N))))
+    B_hat[index_covariate,] = -(0.5/N) * compute_B_hat(2* H * (y - Phi_XB), small_w * tilde_X_list[[index_covariate]], H * dd_F_fix * tilde_X_list[[index_covariate]], small_w, L)
+  }
+
+  tilde_X_array <- array(unlist(tilde_X_list), dim = c(N, N, K))
+
+  # Step 4: Initialize sum matrix for outer products
+  W_hat <- matrix(0, nrow = K, ncol = K)
+
+  # Step 5: For each position (i, j), extract vector and compute outer product
+  for (i in 1:N) {
+    for (j in 1:N) {
+      if(j!=i){
+        v_ij <- tilde_X_array[i, j, ]             # Vector of length p
+        W_hat <- W_hat + (1 / ((N-1)*N)) * small_w[i,j] * v_ij %*% t(v_ij)  # Outer product and sum
+      }
+    }
+  }
+
+  se =  sqrt( diag(solve(W_hat)) /(N*(N-1)) )
+
 
   res = list(est = estimate_analytical_another, se = se,
              eta = eta, eta_MLE = eta_MLE, est_MLE = cof)
@@ -715,6 +839,8 @@ get_APE_analytical<- function(y, X, N, data, index, fit, L = 1, model = 'probit'
   APE_analytical = rep(0, K)
   tilde_X_list <- vector("list", K)
   tilde_Psi_list <- vector("list", K)
+  APE_list <- vector("list", K)
+  d_APE_list <- vector("list", K)
   APE_MLE_list <- vector("list", K)
   d_APE_MLE_list <- vector("list", K)
   Psi_list = vector("list", K)
@@ -733,9 +859,10 @@ get_APE_analytical<- function(y, X, N, data, index, fit, L = 1, model = 'probit'
     if (is.numeric(X) && length(unique(X)) == 2) {
       X_max = as.numeric(max(unique(X)))
       X_min = as.numeric(min(unique(X)))
+      test1 = dnorm(cof_estimate* X_max + eta - cof_estimate * X )
       APE_estimate = (pnorm(cof_estimate* X_max + eta - cof_estimate * X ) - pnorm(cof_estimate* X_min + eta - cof_estimate * X)) / (X_max - X_min)
       d_APE_estimate = (dnorm(cof_estimate* X_max + eta - cof_estimate * X ) - dnorm(cof_estimate* X_min + eta - cof_estimate * X)) / (X_max - X_min)
-      dd_APE_estimate = (-(cof_estimate* X_max + eta - cof_estimate * X) * dnorm(cof_estimate* X_max + cof_estimate + eta - cof_estimate * X ) + (cof_estimate* X_min + eta - cof_estimate * X)  * dnorm(cof_estimate* X_min + eta - cof_estimate * X))/ (X_max - X_min)
+      dd_APE_estimate = (-(cof_estimate* X_max + eta - cof_estimate * X) * dnorm(cof_estimate* X_max + eta - cof_estimate * X ) + (cof_estimate* X_min + eta - cof_estimate * X)  * dnorm(cof_estimate* X_min + eta - cof_estimate * X))/ (X_max - X_min)
 
       APE_estimate_MLE = (pnorm(cof_estimate_MLE * X_max + eta_MLE - cof_estimate_MLE * X ) - pnorm(cof_estimate_MLE* X_min + eta_MLE - cof_estimate_MLE * X)) / (X_max - X_min)
       d_APE_estimate_MLE = (dnorm(cof_estimate_MLE * X_max + eta_MLE - cof_estimate_MLE * X ) - dnorm(cof_estimate_MLE* X_min +eta_MLE - cof_estimate_MLE * X) ) / (X_max - X_min)
@@ -769,10 +896,15 @@ get_APE_analytical<- function(y, X, N, data, index, fit, L = 1, model = 'probit'
     d_APE_estimate_MLE = vector_to_matrix( d_APE_estimate_MLE, N, ind1 = data[,index[1]], ind2 = data[,index[2]])
     dd_APE_estimate_MLE = vector_to_matrix( dd_APE_estimate_MLE, N, ind1 = data[,index[1]], ind2 = data[,index[2]])
 
+    APE_list[[k]] =  APE_estimate
+    d_APE_list[[k]] =  d_APE_estimate
     APE_MLE_list[[k]] =  APE_estimate_MLE
     d_APE_MLE_list[[k]] =  d_APE_estimate_MLE
 
-    cov_sum = vector_to_matrix( t(eta_MLE), N, ind1 = data[,index[1]], ind2 = data[,index[2]])
+
+    # use corrected eta to calculate the martices in the formula
+
+    cov_sum = vector_to_matrix( t(eta), N, ind1 = data[,index[1]], ind2 = data[,index[2]])
     Phi_XB <- pnorm(cov_sum)  # CDF (Φ(Xβ))
     phi_XB <- dnorm(cov_sum)  # PDF (φ(Xβ))
     Phi_XB <- pmax(Phi_XB, 1e-9)
@@ -787,20 +919,20 @@ get_APE_analytical<- function(y, X, N, data, index, fit, L = 1, model = 'probit'
     small_w = H * phi_XB
 
     # B_hat
-    X_into = matrix_to_panel_df(-d_APE_estimate_MLE/small_w)
+    X_into = matrix_to_panel_df(-d_APE_estimate/small_w)
     weight = matrix_to_panel_df(small_w)$X
     Psi = get_weighted_projection_fitted_exclude_t_eq_i(X_into$X, weight, X_into$id, X_into$time)
     Psi_list[[k]]= vector_to_matrix(Psi, N, ind1 = X_into$id, ind2 = X_into$time)
-    tilde_Psi_list[[k]] = -d_APE_estimate_MLE/small_w - Psi_list[[k]]
+    tilde_Psi_list[[k]] = -d_APE_estimate/small_w - Psi_list[[k]]
     diag(tilde_Psi_list[[k]]) = 0
 
     # D_hat
-    D_hat = (0.5 / (N-1)) * sum(colSums((dd_APE_estimate_MLE -  Psi_list[[k]] * H * dd_F_fix) * (1 - diag(N))) / colSums(small_w * (1 - diag(N))))
+    D_hat = (0.5 / (N-1)) * sum(colSums((dd_APE_estimate -  Psi_list[[k]] * H * dd_F_fix) * (1 - diag(N))) / colSums(small_w * (1 - diag(N))))
 
     # B_hat
-    B_hat = (0.5/N) * compute_B_hat(2* H * (y - Phi_XB), small_w * tilde_Psi_list[[k]], dd_APE_estimate_MLE - H * dd_F_fix * Psi_list[[k]] , small_w, L)
+    B_hat = (0.5/N) * compute_B_hat(2* H * (y - Phi_XB), small_w * tilde_Psi_list[[k]], dd_APE_estimate - H * dd_F_fix * Psi_list[[k]] , small_w, L)
 
-    APE_analytical[k] = sum(APE_estimate_MLE)/(N*(N-1)) - B_hat*(1/(N-1)) - D_hat*(1/N)
+    APE_analytical[k] = sum(APE_estimate)/(N*(N-1)) - B_hat*(1/(N-1)) - D_hat*(1/N)
 
     # residual X
     X_into = matrix_to_panel_df(X)
@@ -815,6 +947,8 @@ get_APE_analytical<- function(y, X, N, data, index, fit, L = 1, model = 'probit'
   tilde_Psi_array <- array(unlist(tilde_Psi_list), dim = c(N, N, K))
   APE_MLE_array <- array(unlist(APE_MLE_list), dim = c(N, N, K))
   d_APE_MLE_array <- array(unlist(d_APE_MLE_list), dim = c(N, N, K))
+  APE_array <- array(unlist(APE_list), dim = c(N, N, K))
+  d_APE_array <- array(unlist(d_APE_list), dim = c(N, N, K))
 
 
   # Step 4: Initialize sum matrix for outer products
@@ -827,7 +961,7 @@ get_APE_analytical<- function(y, X, N, data, index, fit, L = 1, model = 'probit'
       if(j!=i){
         v_ij <- tilde_X_array[i, j, ]             # Vector of length p
         W_hat <- W_hat + (1 / ((N-1)*N)) * small_w[i,j] * v_ij %*% t(v_ij)  # Outer product and sum
-        D_beta_APE =  D_beta_APE +  (1 / ((N-1)*N)) * d_APE_MLE_array[i,j, ] * v_ij
+        D_beta_APE =  D_beta_APE +  (1 / ((N-1)*N)) * d_APE_array[i,j, ] * v_ij
       }
     }
   }

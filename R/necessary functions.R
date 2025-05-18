@@ -138,14 +138,50 @@ get_weighted_projection_fitted_exclude_t_eq_i <- function(X, weight, id, time) {
   df <- data.frame(Xit = X, weight = weight, id = id, time = time)
 
   # Exclude rows where time == id (t != i)
-  df <- df[df$id != df$time, ]
 
   # Run the weighted two-way fixed effects regression
-  model <- feols(Xit ~ 1 | id + time, data = df, weights = ~weight)
+  model <- feols(Xit ~ -1 | id + time, data = df, weights = ~weight)
+
+
 
   # Return fitted (predicted) values from the model
   return(fitted(model))
 }
+
+library(MASS) # for ginv()
+
+get_weighted_fe_projection <- function(X, weight, id, time) {
+  n <- length(X)
+  stopifnot(length(weight) == n, length(id) == n, length(time) == n)
+
+  id_f <- factor(id)
+  time_f <- factor(time)
+
+  # Design matrix with full dummy variables (no intercept)
+  D_id <- model.matrix(~ id_f - 1)
+  D_time <- model.matrix(~ time_f - 1)
+  D <- cbind(D_id, D_time)  # n x (N + T)
+
+  # Weight matrix as vector sqrt for WLS transformation
+  w_sqrt <- sqrt(weight)
+
+  # Weighted X and D
+  X_w <- X * w_sqrt
+  D_w <- D * w_sqrt
+
+  # Compute pseudo-inverse (to handle rank-deficiency)
+  DtWD_inv <- ginv(crossprod(D_w))
+
+  # Compute projection matrix P = D (DᵀWD)^- Dᵀ W
+  # But better to apply projection as vector operation, to save memory
+  fitted_vals <- D %*% (DtWD_inv %*% crossprod(D_w, X_w))
+
+  # Center fitted values weighted by weight to match feols normalization
+  # fitted_centered <- fitted_vals - weighted.mean(fitted_vals, weight)
+
+  return(as.vector(fitted_vals))
+}
+
 
 matrix_to_panel_df <- function(X_mat) {
   if (!is.matrix(X_mat)) {
