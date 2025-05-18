@@ -6,24 +6,25 @@ library(foreach)
 library(alpaca)
 library(fixest)
 library(speedglm)
+library(margins)
 source('simulation data.R')
-packages_to_export <- c("dplyr", 'NetBootstrap', 'alpaca', 'speedglm', 'fixest')
+packages_to_export <- c("dplyr", 'NetBootstrap', 'alpaca', 'speedglm', 'fixest', 'margins')
 num_cores <- detectCores()
-cl <- makeCluster(num_cores-22)
+cl <- makeCluster(num_cores-5)
 registerDoParallel(cl)
 
 # probit model network
-N = 30
+N = 20
 N_seq = c(N)
 
 # bootstrap times
-bootstrap_time = 199
+bootstrap_time = 5
 
 # repitition times
-mle_num = 300
-design = 1
-for(design in c(1,2,3,4)){
+mle_num = 3
 
+for(design in c(1,2,3,4)){
+  start_time <- Sys.time()
   # empty matrix
   Estimate_bias = matrix(0, length(N_seq), 6)
   Estimate_se = matrix(0, length(N_seq), 6)
@@ -64,25 +65,24 @@ for(design in c(1,2,3,4)){
       index_name = colnames(data_in)[(K+2):(K+3)]
 
       # estimation
-      fit = network_bootstrap(y = y, X = X_design, N = N, bootstrap_time = bootstrap_time, index = index_name, data = data_in, link = 'probit', beta_NULL = beta_NULL)
+      fit = network_bootstrap(y = y, X = X_design, N = N, bootstrap_time = bootstrap_time, index = index_name, data = data_in, link = 'probit', beta_NULL = NULL)
       fit_jack = split_jackknife(y = y, X = X_design, N = N, index = index_name, data = data_in, link = 'probit',  beta_NULL = NULL)
       fit_analytical = analytical_Amrei(y = y, X = X_design, N = N, index = index_name, data = data_in, link = 'probit', L = 1, beta_NULL = NULL)
       fit_analytical_own = analytical_corrected(y = y, X = X_design, N = N, index = index_name, data = data_in, link = 'probit', L = 1, beta_NULL = NULL)
-
 
       # all the estimates
       MLE_estimate = fit$est_MLE[1]
       Medain_bootstrap_estimate = fit$est_median[1]
       Mean_bootstrap_estimate = fit$est_mean[1]
       jack_estimate = fit_jack$est[1]
-      analytical_estimate = summary(fit_analytical)$cm[1]
+      analytical_estimate = summary(fit_analytical$est)$cm[1]
       analytical_estimate_own = fit_analytical_own$est[1]
       bootstrap_estimate = fit$est_bootstrap_all[,1]
       mean_bias = mean(fit$est_bootstrap_all[,1]) - fit$est_MLE[1]
       se_MLE = sqrt(fit$Hessian_MLE[1,1])
       se_bootstrap = fit$sd
       se_jack = fit_jack$se
-      se_analytical = summary(fit_analytical)$cm[2]
+      se_analytical = summary(fit_analytical$est)$cm[2]
       se_analytical_own = fit_analytical_own$se
 
       pre_pivoting_bootstrap = (Medain_bootstrap_estimate - beta)/se_analytical_own
@@ -134,12 +134,29 @@ for(design in c(1,2,3,4)){
             APE_true[i, j] = (pnorm(beta + alpha[i] + gamma[j]) - pnorm(-beta + alpha[i] + gamma[j]))/2
         }
       }
+
+      # APE_true = matrix(0, nrow = N, ncol = N)
+      # alpha = DGP$alpha
+      # gamma = DGP$gamma
+      # for (i in seq(N)){
+      #   for ( j in seq(N)){
+      #     if (i!=j)
+      #       APE_true[i, j] = beta * dnorm(beta + alpha[i] + gamma[j])
+      #   }
+      # }
+
       APE_true = sum(APE_true)/(N*(N-1))
       APE_bootstrap = get_APE_bootstrap(y = y, X = X_design, N = N, data = data_in, fit = fit)
-      APE_jackknife = get_APE_jackknife(y = y, X = X_design, N = N, data = data_in, index = index_name, fit = fit_jack, L = 1)
+      APE_jackknife = get_APE_jackknife(y = y, X = X_design, N = N, data = data_in, index = index_name, fit = fit_jack)
       APE_analytical = get_APE_analytical(y = y, X = X_design, N = N, data = data_in, index = index_name, fit = fit_analytical_own, L = 1)
-      APE_se_formula = c(APE_analytical$se, APE_bootstrap$se, APE_bootstrap$se, APE_jackknife$se, APE_analytical$se)
-      summary(getAPEs(fit_analytical, panel.structure = 'network'))
+      APE_MLE = getAPEs(fit_analytical$est_MLE, panel.structure = 'network')
+      APE_MLE_estimate = summary(APE_MLE)$cm[1]
+      APE_MLE_se = summary(APE_MLE)$cm[2]
+      APE_corrected = getAPEs(fit_analytical$est, panel.structure = 'network')
+      APE_corrected_estimate = summary(APE_corrected)$cm[1]
+      APE_corrected_se = summary(APE_corrected)$cm[2]
+      APE_se_formula = c(APE_MLE_se, APE_bootstrap$se, APE_bootstrap$se, APE_corrected_se, APE_corrected_se)
+      APE_se_formula_own = c(APE_MLE_se, APE_bootstrap$se, APE_bootstrap$se, APE_analytical$se, APE_analytical$se)
 
       results = list( MLE_estimate = MLE_estimate, Mean_bootstrap_estimate  = Mean_bootstrap_estimate , Medain_bootstrap_estimate = Medain_bootstrap_estimate, bootstrap_estimate = bootstrap_estimate,
                       jack_estimate = jack_estimate, analytical_estimate = analytical_estimate, analytical_estimate_own = analytical_estimate_own,
@@ -148,8 +165,8 @@ for(design in c(1,2,3,4)){
                       se_MLE = se_MLE, se_bootstrap = se_bootstrap, se_jack = se_jack, se_analytical = se_analytical, se_analytical_own = se_analytical_own,
                       p_cover_MLE = p_cover_MLE, p_cover_bootstrap = p_cover_bootstrap, p_cover_jack = p_cover_jack,
                       p_cover_analytical = p_cover_analytical,p_cover_analytical_own = p_cover_analytical_own, p_cover_bootstrap_pre_pivoting = p_cover_bootstrap_pre_pivoting,
-                      APE_true = APE_true, APE_MLE = APE_bootstrap$APE_MLE, APE_mean = APE_bootstrap$APE_mean_bootstrap, APE_median = APE_bootstrap$APE_median_bootstrap, APE_jackknife = APE_jackknife$APE,  APE_analytical =  APE_analytical$APE,
-                      APE_se_formula = APE_se_formula)
+                      APE_true = APE_true, APE_MLE = fit$APE_MLE_estimate, APE_mean = APE_bootstrap$APE_mean_bootstrap, APE_median = APE_bootstrap$APE_median_bootstrap, APE_jackknife = APE_jackknife$APE,  APE_analytical =  APE_analytical$APE,  APE_corrected_estimate = APE_corrected_estimate,
+                      APE_se_formula = APE_se_formula, APE_se_formula_own = APE_se_formula_own)
       return(results)
     }
 
@@ -174,6 +191,7 @@ for(design in c(1,2,3,4)){
       p_pivoting = 0
       all_APE = matrix(0, length(result), 5)
       APE_se_formula = matrix(0, length(result), 5)
+      APE_se_formula_own = matrix(0, length(result), 5)
 
       for (i in seq(length(result))) {
         all_estimator[i, ] = c(result[[i]]$MLE_estimate, result[[i]]$Mean_bootstrap_estimate, result[[i]]$Medain_bootstrap_estimate, result[[i]]$jack_estimate, result[[i]]$analytical_estimate, result[[i]]$analytical_estimate_own)
@@ -187,6 +205,7 @@ for(design in c(1,2,3,4)){
         # APE
         all_APE[i, ] = c(result[[i]]$APE_MLE - result[[i]]$APE_true, result[[i]]$APE_mean - result[[i]]$APE_true, result[[i]]$APE_median - result[[i]]$APE_true, result[[i]]$APE_jackknife - result[[i]]$APE_true, result[[i]]$APE_analytical - result[[i]]$APE_true)
         APE_se_formula[i, ] = c(result[[i]]$APE_se_formula)
+        APE_se_formula_own[i, ] = c(result[[i]]$APE_se_formula_own)
         # all bootstrap estimate
         Boot_estimate_all[i,] = result[[i]]$bootstrap_estimate
         T_boot = Boot_estimate_all[i,]- (mean(Boot_estimate_all[i,]) - result[[i]]$MLE_estimate) - result[[i]]$MLE_estimate
@@ -228,24 +247,25 @@ for(design in c(1,2,3,4)){
       # APE
       APE_estimate[t_index, ] = apply(all_APE / result[[1]]$APE_true, 2, mean)
       APE_deviation[t_index, ] = apply(all_APE/result[[1]]$APE_true, 2, sd)
-      cover_APE = apply( all_APE + result[[1]]$APE_true - 1.96*APE_se_formula <= result[[1]]$APE_true & result[[1]]$APE_true <= all_APE + result[[1]]$APE_true + 1.96*APE_se_formula, 2, function(x) formatC(mean(x), format = "f", digits = 3))
+      cover_APE = apply( all_APE + result[[1]]$APE_true - 1.96*APE_se_formula_own <= result[[1]]$APE_true & result[[1]]$APE_true <= all_APE + result[[1]]$APE_true + 1.96*APE_se_formula_own, 2, function(x) formatC(mean(x), format = "f", digits = 3))
 
 
     }
     t_index = t_index + 1
   }
-
-
+  end_time <- Sys.time()
+  running_time = end_time - start_time
 
   # save the table
-  table_name1 <- paste0('setting_', design, '_bias_estimation', ".csv")
-  table_name2 <- paste0('setting_', design, '_cover_rate', ".csv")
-  table_name3 <- paste0('setting_', design, '_se', ".csv")
-  table_name4 <- paste0('setting_', design, 'all_estimator', ".csv")
-  table_name5 <- paste0('setting_', design, '_cover_rate_APE', ".csv")
-  table_name6 <- paste0('setting_', design, 'all_APE', ".csv")
-  table_name7 <- paste0('setting_', design, 'all_APE_se', ".csv")
-  table_name8 <- paste0('setting_', design, 'APE_bias_estimation', ".csv")
+  table_name1 <- paste0('setting_', design, '_bias_estimation_time', running_time ,  ".csv")
+  table_name2 <- paste0('setting_', design, '_cover_rate', running_time , ".csv")
+  table_name3 <- paste0('setting_', design, 'all_se', running_time , ".csv")
+  table_name4 <- paste0('setting_', design, 'all_estimator', running_time , ".csv")
+  table_name5 <- paste0('setting_', design, '_cover_rate_APE', running_time , ".csv")
+  table_name6 <- paste0('setting_', design, 'all_APE', running_time , ".csv")
+  table_name7 <- paste0('setting_', design, 'all_APE_se', running_time , ".csv")
+  table_name8 <- paste0('setting_', design, 'APE_bias_estimation', running_time , ".csv")
+  table_name9 <- paste0('setting_', design, 'all_APE_se_own', running_time, ".csv")
   write.csv(rbind( Estimate_bias, Estimate_deviation ) , table_name1)
   write.csv(rbind(cover_MLE, cover_bootstrap, cover_jack, cover_analytical,cover_analytical_own, cover_pivoting, cover_pivoting_another) , table_name2)
   write.csv(Estimate_se , table_name3)
@@ -254,6 +274,7 @@ for(design in c(1,2,3,4)){
   write.csv(all_APE , table_name6)
   write.csv(APE_se_formula, table_name7)
   write.csv(rbind( APE_estimate, APE_deviation) , table_name8)
+  write.csv(APE_se_formula_own, table_name9)
 
 }
 

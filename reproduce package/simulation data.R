@@ -20,9 +20,9 @@ data_generation = function(N, beta, design = 1, model = 'probit'){
     dens_T_low = -log(N)^(0.5)
   }else{
     dens_N_up = 0
-    dens_N_low = -log(N)
+    dens_N_low = -0.5 * log(N)
     dens_T_up = 0
-    dens_T_low = -log(N)
+    dens_T_low = -0.5 * log(N)
   }
   for (i in seq(N)){
     alpha[i] = dens_N_low + ((i - 1) / ( N - 1)) * (dens_N_up - dens_N_low)
@@ -110,7 +110,7 @@ data_generation = function(N, beta, design = 1, model = 'probit'){
 #   Z = array(0, dim = c(N, N, K))
 #   Y = matrix(0, nrow = N, ncol = N)
 #   for (k in seq(K)){
-#     x = rexp(N, 2)
+#     x = rnorm(N, 0, 1)
 #     for (t in seq(N)){
 #       for (i in seq(N)) {
 #         Z[i, t, k] = x[i]*x[t]
@@ -142,3 +142,4 @@ data_generation = function(N, beta, design = 1, model = 'probit'){
 #
 #   return(list(data = data_in, y = y, X = X_design, Y_original = Y, X_original = Z, alpha = alpha, gamma = gamma))
 # }
+
