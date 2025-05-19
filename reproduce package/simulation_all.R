@@ -7,6 +7,7 @@ library(alpaca)
 library(fixest)
 library(speedglm)
 library(margins)
+library(MASS)
 source('simulation data.R')
 packages_to_export <- c("dplyr", 'NetBootstrap', 'alpaca', 'speedglm', 'fixest', 'margins')
 num_cores <- detectCores()
@@ -14,14 +15,15 @@ cl <- makeCluster(num_cores-5)
 registerDoParallel(cl)
 
 # probit model network
-N = 20
+N = 30
 N_seq = c(N)
 
 # bootstrap times
 bootstrap_time = 5
 
 # repitition times
-mle_num = 3
+mle_num = 10
+design = 1
 
 for(design in c(1,2,3,4)){
   start_time <- Sys.time()
@@ -58,7 +60,7 @@ for(design in c(1,2,3,4)){
       estimate_jack = NULL
 
       # prepare the data
-      DGP = data_generation( N = N, beta = beta, design = design )
+      DGP = data_generation( N = N, beta = beta, design = design)
       y = DGP$y
       X_design = DGP$X
       data_in = as.data.frame(DGP$data)
@@ -69,7 +71,9 @@ for(design in c(1,2,3,4)){
       fit_jack = split_jackknife(y = y, X = X_design, N = N, index = index_name, data = data_in, link = 'probit',  beta_NULL = NULL)
       fit_analytical = analytical_Amrei(y = y, X = X_design, N = N, index = index_name, data = data_in, link = 'probit', L = 1, beta_NULL = NULL)
       fit_analytical_own = analytical_corrected(y = y, X = X_design, N = N, index = index_name, data = data_in, link = 'probit', L = 1, beta_NULL = NULL)
-
+fit$eta_MLE
+fit_jack$eta_MLE
+fit_analytical_own$eta_MLE
       # all the estimates
       MLE_estimate = fit$est_MLE[1]
       Medain_bootstrap_estimate = fit$est_median[1]
@@ -259,13 +263,15 @@ for(design in c(1,2,3,4)){
   # save the table
   table_name1 <- paste0('setting_', design, '_bias_estimation_time', running_time ,  ".csv")
   table_name2 <- paste0('setting_', design, '_cover_rate', running_time , ".csv")
-  table_name3 <- paste0('setting_', design, 'all_se', running_time , ".csv")
+  table_name3 <- paste0('setting_', design, 'se', running_time , ".csv")
   table_name4 <- paste0('setting_', design, 'all_estimator', running_time , ".csv")
   table_name5 <- paste0('setting_', design, '_cover_rate_APE', running_time , ".csv")
   table_name6 <- paste0('setting_', design, 'all_APE', running_time , ".csv")
   table_name7 <- paste0('setting_', design, 'all_APE_se', running_time , ".csv")
   table_name8 <- paste0('setting_', design, 'APE_bias_estimation', running_time , ".csv")
   table_name9 <- paste0('setting_', design, 'all_APE_se_own', running_time, ".csv")
+  table_name10 <- paste0('setting_', design, 'all_se', running_time, ".csv")
+  table_name11 <- paste0('setting_', design, 'boot_estimate', running_time, ".csv")
   write.csv(rbind( Estimate_bias, Estimate_deviation ) , table_name1)
   write.csv(rbind(cover_MLE, cover_bootstrap, cover_jack, cover_analytical,cover_analytical_own, cover_pivoting, cover_pivoting_another) , table_name2)
   write.csv(Estimate_se , table_name3)
@@ -275,6 +281,8 @@ for(design in c(1,2,3,4)){
   write.csv(APE_se_formula, table_name7)
   write.csv(rbind( APE_estimate, APE_deviation) , table_name8)
   write.csv(APE_se_formula_own, table_name9)
+  write.csv(se_estimator, table_name10)
+  write.csv(Boot_estimate_all, table_name11)
 
 }
 
