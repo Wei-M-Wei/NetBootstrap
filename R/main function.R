@@ -228,8 +228,8 @@ network_bootstrap = function(y, X, N, bootstrap_time, index, data, link = 'probi
   id_idx <- rep(1:N, each = N)     # id changes slowly
   time_idx <- rep(1:N, times = N)  # time changes quickly
   keep <- id_idx != time_idx
-  alpha_sub <- alpha[,id_idx[keep]]
-  gamma_sub <- gamma[,time_idx[keep]]
+  alpha_sub <- alpha[,time_idx[keep]]
+  gamma_sub <- gamma[,id_idx[keep]]
   # Reconstruct eta = Xβ + α_i + γ_t
   eta = cof_B[,1:K] %*% t( X_to ) + (alpha_sub + gamma_sub)
 
@@ -240,8 +240,8 @@ network_bootstrap = function(y, X, N, bootstrap_time, index, data, link = 'probi
   id_idx <- rep(1:N, each = N)     # id changes slowly
   time_idx <- rep(1:N, times = N)  # time changes quickly
   keep <- id_idx != time_idx
-  alpha_sub <- alpha[id_idx[keep]]
-  gamma_sub <- gamma[time_idx[keep]]
+  alpha_sub <- alpha[time_idx[keep]]
+  gamma_sub <- gamma[id_idx[keep]]
   # Reconstruct eta = Xβ + α_i + γ_t
   eta_MLE = cof[1:K] %*% t( X_to ) + (alpha_sub + gamma_sub)
 
@@ -430,8 +430,8 @@ split_jackknife = function(y, X, N, index, data, link = 'probit', beta_NULL = NU
   id_idx <- rep(1:N, each = N)     # id changes slowly
   time_idx <- rep(1:N, times = N)  # time changes quickly
   keep <- id_idx != time_idx
-  alpha_sub <- alpha[,id_idx[keep]]
-  gamma_sub <- gamma[,time_idx[keep]]
+  alpha_sub <- alpha[,time_idx[keep]]
+  gamma_sub <- gamma[,id_idx[keep]]
   # Reconstruct eta = Xβ + α_i + γ_t
   eta = cof_jack_all[,1:K] %*% t( X_to ) + (alpha_sub + gamma_sub)
 
@@ -442,8 +442,8 @@ split_jackknife = function(y, X, N, index, data, link = 'probit', beta_NULL = NU
   id_idx <- rep(1:N, each = N)     # id changes slowly
   time_idx <- rep(1:N, times = N)  # time changes quickly
   keep <- id_idx != time_idx
-  alpha_sub <- alpha[id_idx[keep]]
-  gamma_sub <- gamma[time_idx[keep]]
+  alpha_sub <- alpha[time_idx[keep]]
+  gamma_sub <- gamma[id_idx[keep]]
   # Reconstruct eta = Xβ + α_i + γ_t
   eta_MLE = cof[1:K] %*% t( X_to ) + (alpha_sub + gamma_sub)
 
@@ -629,7 +629,7 @@ analytical_corrected = function(y, X, N, index, data, link = 'probit', L = 1, be
   # se
   ##################
   X_to = as.matrix(X)
-  y_to = y
+  y_to = as.matrix(y)
 
   # calculate the eta = xbeta + alpda_i + gamma_j
   alpha <- cof[(K + 1):(K + N)]
@@ -638,10 +638,11 @@ analytical_corrected = function(y, X, N, index, data, link = 'probit', L = 1, be
   id_idx <- rep(1:N, each = N)     # id changes slowly
   time_idx <- rep(1:N, times = N)  # time changes quickly
   keep <- id_idx != time_idx
-  alpha_sub <- alpha[id_idx[keep]]
-  gamma_sub <- gamma[time_idx[keep]]
+  alpha_sub <- alpha[time_idx[keep]]
+  gamma_sub <- gamma[id_idx[keep]]
   # Reconstruct eta = Xβ + α_i + γ_t
   eta_MLE = cof[1:K] %*% t( X_to ) + (alpha_sub + gamma_sub)
+
 
   est = cof
   cov_sum = vector_to_matrix( as.vector(eta_MLE), N, ind1 = data[,index[1]], ind2 = data[,index[2]])
@@ -657,8 +658,6 @@ analytical_corrected = function(y, X, N, index, data, link = 'probit', L = 1, be
     # X is a matrix of a single covariate, and the same for y
     X = vector_to_matrix(X_to[,index_covariate], N, ind1 = data[,index[1]], ind2 = data[,index[2]])
     y = vector_to_matrix(y_to, N, ind1 = data[,index[1]], ind2 = data[,index[2]])
-    y[row(y) == col(y)] = 0
-
 
     Phi_XB <- pnorm(cov_sum)  # CDF (Φ(Xβ))
     phi_XB <- dnorm(cov_sum)  # PDF (φ(Xβ))
@@ -685,6 +684,14 @@ analytical_corrected = function(y, X, N, index, data, link = 'probit', L = 1, be
     D_hat[index_covariate,] = -(0.5 / (N-1)) * sum(colSums((H * dd_F_fix * tilde_X_list[[index_covariate]]) * (1 - diag(N))) / colSums(small_w * (1 - diag(N))))
     B_hat[index_covariate,] = -(0.5/N) * compute_B_hat(2* H * (y - Phi_XB), small_w * tilde_X_list[[index_covariate]], H * dd_F_fix * tilde_X_list[[index_covariate]], small_w, L)
   }
+
+  # test1 = H * (y - Phi_XB)
+  # test2 =  small_w * tilde_X_list[[index_covariate]]
+  # test3 = H * dd_F_fix * tilde_X_list[[index_covariate]]
+  # test4 = small_w
+  # test5 = y
+  # test6 = Phi_XB
+  # test7 = H
 
   tilde_X_array <- array(unlist(tilde_X_list), dim = c(N, N, K))
 
@@ -726,8 +733,8 @@ analytical_corrected = function(y, X, N, index, data, link = 'probit', L = 1, be
   id_idx <- rep(1:N, each = N)     # id changes slowly
   time_idx <- rep(1:N, times = N)  # time changes quickly
   keep <- id_idx != time_idx
-  alpha_sub <- alpha[id_idx[keep]]
-  gamma_sub <- gamma[time_idx[keep]]
+  alpha_sub <- alpha[time_idx[keep]]
+  gamma_sub <- gamma[id_idx[keep]]
   # Reconstruct eta = Xβ + α_i + γ_t
   eta = estimate_analytical_another[1:K] %*% t( X_to ) + (alpha_sub + gamma_sub)
 
