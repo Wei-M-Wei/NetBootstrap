@@ -225,7 +225,7 @@ compute_B_hat <- function(D, E, B, C, L) {
     }
 
     sum_B <- sum(B[i, -i])       # exclude j == i
-    sum_C <- sum(C[i, -i])       # exclude j == i
+    sum_C <- sum(C[i, -i])       # exclude j == itask
 
     result <- result + (sum_l_term + sum_B) / sum_C
   }
