@@ -225,7 +225,7 @@ compute_B_hat <- function(D, E, B, C, L) {
     }
 
     sum_B <- sum(B[i, -i])       # exclude j == i
-    sum_C <- sum(C[i, -i])       # exclude j == itask
+    sum_C <- sum(C[i, -i])       # exclude j == i
 
     result <- result + (sum_l_term + sum_B) / sum_C
   }
@@ -342,4 +342,28 @@ compute_ape_se <- function(model, variables = NULL, K, beta_hat) {
   }
 
   return(results)
+}
+
+compute_TN <- function(Y, p) {
+  N <- nrow(Y)
+  TN <- 0
+
+  for (i in 1:N) {
+    for (j in setdiff(1:N, i)) {
+      for (k in setdiff(1:N, c(i, j))) {
+        # Observed product
+        Y_term <- Y[i, j] * Y[i, k] * Y[k, j]
+        # Expected product
+        p_term <- p[i,j] * p[i,k] * p[k,j]
+
+        # Add to sum
+        TN <- TN + (Y_term - p_term)
+      }
+    }
+  }
+
+  # Normalize
+  TN <- TN / (N * (N - 1) * (N - 2))
+
+  return(TN)
 }

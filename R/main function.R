@@ -252,6 +252,31 @@ network_bootstrap = function(y, X, N, bootstrap_time, index, data, link = 'probi
   est_correct_median = cof - (cof_boost_median - cof)
   est_correct_mean[K+1] = sum(est_correct_mean[(N+K+1):(N+N+K)]) - sum(est_correct_mean[(K+2):(N+K)])
   est_correct_median[K+1] = sum(est_correct_median[(N+K+1):(N+N+K)]) - sum(est_correct_median[(K+2):(N+K)])
+
+  # calculate the eta = xbeta + alpda_i + gamma_j
+  alpha <- est_correct_mean[(K + 1):(K + N)]
+  gamma <- est_correct_mean[(K + N + 1):(K + N + N)]
+  # Generate implied id and time indices
+  id_idx <- rep(1:N, each = N)     # id changes slowly
+  time_idx <- rep(1:N, times = N)  # time changes quickly
+  keep <- id_idx != time_idx
+  alpha_sub <- alpha[time_idx[keep]]
+  gamma_sub <- gamma[id_idx[keep]]
+  # Reconstruct eta = Xβ + α_i + γ_t
+  eta_mean = est_correct_mean[1:K] %*% t( X_to ) + (alpha_sub + gamma_sub)
+
+  # calculate the eta = xbeta + alpda_i + gamma_j
+  alpha <- est_correct_median[(K + 1):(K + N)]
+  gamma <- est_correct_median[(K + N + 1):(K + N + N)]
+  # Generate implied id and time indices
+  id_idx <- rep(1:N, each = N)     # id changes slowly
+  time_idx <- rep(1:N, times = N)  # time changes quickly
+  keep <- id_idx != time_idx
+  alpha_sub <- alpha[time_idx[keep]]
+  gamma_sub <- gamma[id_idx[keep]]
+  # Reconstruct eta = Xβ + α_i + γ_t
+  eta_median = est_correct_median[1:K] %*% t( X_to ) + (alpha_sub + gamma_sub)
+
   if (K == 1){
     boostrap_sd = sd(cof_B[,1:K])
   }
@@ -266,14 +291,14 @@ network_bootstrap = function(y, X, N, bootstrap_time, index, data, link = 'probi
                APE_MLE_estimate = APE_MLE_estimate, APE_MLE_se = APE_MLE_se,
                log_likelihood_MLE = log_likelihood_estimate, log_likelihood_Bootstrap = log_likelihood_estimate_B,
                log_likelihood_MLE_NULL = log_likelihood_estimate_NULL, log_likelihood_Bootstrap_NULL = log_likelihood_estimate_B_NULL,
-               Hessian_MLE = Hessian_inv, Hessian_MLE_NULL = Hessian_inv_NULL, X_origin = as.matrix(X_design), eta = eta, eta_MLE = eta_MLE, data = data
+               Hessian_MLE = Hessian_inv, Hessian_MLE_NULL = Hessian_inv_NULL, X_origin = as.matrix(X_design), eta = eta, eta_MLE = eta_MLE, eta_mean = eta_mean, eta_median = eta_median, data = data
     )
   }
   else{
     res = list(est_MLE = cof, est_mean = est_correct_mean, est_median = est_correct_median, sd = boostrap_sd, est_bootstrap_all = cof_B,
                APE_MLE_estimate = APE_MLE_estimate, APE_MLE_se = APE_MLE_se,
                log_likelihood_MLE = log_likelihood_estimate, log_likelihood_Bootstrap = log_likelihood_estimate_B,
-               Hessian_MLE = Hessian_inv, X_origin = as.matrix(X_design), eta = eta, eta_MLE = eta_MLE, data = data
+               Hessian_MLE = Hessian_inv, X_origin = as.matrix(X_design), eta = eta, eta_MLE = eta_MLE, eta_mean = eta_mean, eta_median = eta_median, data = data
     )
   }
   return(res)
@@ -424,8 +449,8 @@ split_jackknife = function(y, X, N, index, data, link = 'probit', beta_NULL = NU
 
 
   # calculate the eta = xbeta + alpda_i + gamma_j
-  alpha <- cof_jack_all[,(K + 1):(K + N)]
-  gamma <- cof_jack_all[,(K + N + 1):(K + N + N)]
+  alpha <- cof_j[,(K + 1):(K + N)]
+  gamma <- cof_j[,(K + N + 1):(K + N + N)]
   # Generate implied id and time indices
   id_idx <- rep(1:N, each = N)     # id changes slowly
   time_idx <- rep(1:N, times = N)  # time changes quickly
@@ -433,7 +458,19 @@ split_jackknife = function(y, X, N, index, data, link = 'probit', beta_NULL = NU
   alpha_sub <- alpha[,time_idx[keep]]
   gamma_sub <- gamma[,id_idx[keep]]
   # Reconstruct eta = Xβ + α_i + γ_t
-  eta = cof_jack_all[,1:K] %*% t( X_to ) + (alpha_sub + gamma_sub)
+  eta = cof_j[,1:K] %*% t( X_to ) + (alpha_sub + gamma_sub)
+
+  # calculate the eta = xbeta + alpda_i + gamma_j
+  alpha <- estimate_jack[(K + 1):(K + N)]
+  gamma <- estimate_jack[(K + N + 1):(K + N + N)]
+  # Generate implied id and time indices
+  id_idx <- rep(1:N, each = N)     # id changes slowly
+  time_idx <- rep(1:N, times = N)  # time changes quickly
+  keep <- id_idx != time_idx
+  alpha_sub <- alpha[time_idx[keep]]
+  gamma_sub <- gamma[id_idx[keep]]
+  # Reconstruct eta = Xβ + α_i + γ_t
+  eta_jack = estimate_jack[1:K] %*% t( X_to ) + (alpha_sub + gamma_sub)
 
   # calculate the eta = xbeta + alpda_i + gamma_j
   alpha <- cof[(K + 1):(K + N)]
@@ -516,13 +553,13 @@ split_jackknife = function(y, X, N, index, data, link = 'probit', beta_NULL = NU
                log_likelihood_jack = log_likelihood_j,
                log_likelihood_jack_NULL = log_likelihood_constrain_j,
                Hessian_jack = Hessian_inv_1_j, Hessian_jack_NULL = Hessian_inv_2_constrain_j, X_origin = as.matrix(X_save),
-               eta = eta, eta_MLE = eta_MLE, se = se_corrected
+               eta = eta,  eta_MLE = eta_MLE, eta_jack = eta_jack, se = se_corrected
     )
   }else{
     res = list(est = estimate_jack, est_MLE = cof, est_jackknife_all = cof_jack_all,
                log_likelihood_jack = log_likelihood_j,
                Hessian_jack = Hessian_inv_1_j, X_origin = as.matrix(X_save),
-               eta = eta, eta_MLE = eta_MLE, se = se_corrected
+               eta = eta,  eta_MLE = eta_MLE, eta_jack = eta_jack, se = se_corrected
     )
   }
   return(res)
@@ -740,7 +777,7 @@ analytical_corrected = function(y, X, N, index, data, link = 'probit', L = 1, be
 
 
   # re-update the standard error
-  cov_sum = vector_to_matrix( eta, N, ind1 = data[,index[1]], ind2 = data[,index[2]])
+  cov_sum = vector_to_matrix( as.vector(eta), N, ind1 = data[,index[1]], ind2 = data[,index[2]])
   tilde_X_list <- vector("list", K)
   W_hat <- matrix(0, nrow = K, ncol = K)
 
@@ -926,18 +963,23 @@ get_APE_analytical<- function(y, X, N, data, index, fit, L = 1, model = 'probit'
     small_w = H * phi_XB
 
     # B_hat
-    X_into = matrix_to_panel_df(-d_APE_estimate/small_w)
+    X_into = matrix_to_panel_df(d_APE_estimate/small_w)
+    EPsi = d_APE_estimate/small_w
+    diag(EPsi) = 0
     weight = matrix_to_panel_df(small_w)$X
     Psi = get_weighted_projection_fitted_exclude_t_eq_i(X_into$X, weight, X_into$id, X_into$time)
     Psi_list[[k]]= vector_to_matrix(Psi, N, ind1 = X_into$id, ind2 = X_into$time)
-    tilde_Psi_list[[k]] = -d_APE_estimate/small_w - Psi_list[[k]]
+    tilde_Psi_list[[k]] = EPsi - Psi_list[[k]]
     diag(tilde_Psi_list[[k]]) = 0
+    diag(small_w) = 0
+    diag(H) = 0
 
     # D_hat
     D_hat = (0.5 / (N-1)) * sum(colSums((dd_APE_estimate -  Psi_list[[k]] * H * dd_F_fix) * (1 - diag(N))) / colSums(small_w * (1 - diag(N))))
 
     # B_hat
-    B_hat = (0.5/N) * compute_B_hat(2* H * (y - Phi_XB), small_w * tilde_Psi_list[[k]], dd_APE_estimate - H * dd_F_fix * Psi_list[[k]] , small_w, L)
+    B_hat = (0.5/N) * compute_B_hat(2* H * (y - Phi_XB), -small_w * tilde_Psi_list[[k]], dd_APE_estimate - H * dd_F_fix * Psi_list[[k]] , small_w, L)
+
 
     APE_analytical[k] = sum(APE_estimate)/(N*(N-1)) - B_hat*(1/(N-1)) - D_hat*(1/N)
 
@@ -948,6 +990,7 @@ get_APE_analytical<- function(y, X, N, data, index, fit, L = 1, model = 'probit'
     re_matrix = vector_to_matrix(re, N, ind1 = X_into$id, ind2 = X_into$time)
     tilde_X_list[[k]] = X - re_matrix
   }
+
 
   tilde_X_array <- array(unlist(tilde_X_list), dim = c(N, N, K))
   Psi_array <- array(unlist(Psi_list), dim = c(N, N, K))
@@ -982,14 +1025,15 @@ get_APE_analytical<- function(y, X, N, data, index, fit, L = 1, model = 'probit'
   }
 
   tilde_APE_MLE_array = array(0, dim = c(N, N, K))
-  for (k in 1:K) {
-    tilde_APE_MLE_array[,,k] <-  sweep(APE_MLE_array[,,k], 2, colMeans(APE_MLE_array[,,k]),  FUN = "-")
-    diag(tilde_APE_MLE_array[,,k]) = 0
-    APE_MLE[k] = sum(APE_MLE_array[,,k])/(N*(N-1))
-  }
+  # for (k in 1:K) {
+  #   tilde_APE_MLE_array[,,k] <-  sweep(APE_MLE_array[,,k], 2, colMeans(APE_MLE_array[,,k]),  FUN = "-")
+  #   diag(tilde_APE_MLE_array[,,k]) = 0
+  #   APE_MLE[k] = sum(APE_MLE_array[,,k])/(N*(N-1))
+  # }
 
   se =  sqrt( diag(compute_expression_array(tilde_APE_MLE_array, tau)) )/(N*(N-1))
   res = list(APE_MLE = APE_MLE, APE = APE_analytical, se = se)
+  #, test1 = test1, test2 = test2, test3 = test3, test4 = test4, test5 = test5, test6 = test6)
 
   return(res)
 
