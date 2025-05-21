@@ -1025,11 +1025,9 @@ get_APE_analytical<- function(y, X, N, data, index, fit, L = 1, model = 'probit'
   }
 
   tilde_APE_MLE_array = array(0, dim = c(N, N, K))
-  # for (k in 1:K) {
-  #   tilde_APE_MLE_array[,,k] <-  sweep(APE_MLE_array[,,k], 2, colMeans(APE_MLE_array[,,k]),  FUN = "-")
-  #   diag(tilde_APE_MLE_array[,,k]) = 0
-  #   APE_MLE[k] = sum(APE_MLE_array[,,k])/(N*(N-1))
-  # }
+  for (k in 1:K) {
+    APE_MLE[k] = sum(APE_MLE_array[,,k])/(N*(N-1))
+  }
 
   se =  sqrt( diag(compute_expression_array(tilde_APE_MLE_array, tau)) )/(N*(N-1))
   res = list(APE_MLE = APE_MLE, APE = APE_analytical, se = se)
