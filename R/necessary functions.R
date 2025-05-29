@@ -368,7 +368,22 @@ compute_TN <- function(Y, p) {
   return(TN)
 }
 
-get_mode <- function(v) {
-  uniq_vals <- unique(v)
-  uniq_vals[which.max(tabulate(match(v, uniq_vals)))]
+get_mode <- function(x, plot = FALSE) {
+  # Remove NA values
+  x <- x[!is.na(x)]
+
+  # Kernel density estimate
+  d <- density(x)
+
+  # Find mode (peak of the density)
+  mode_val <- d$x[which.max(d$y)]
+
+  # Optionally plot
+  if (plot) {
+    plot(d, main = "Density Estimate with Mode")
+    abline(v = mode_val, col = "red", lwd = 2)
+    text(mode_val, max(d$y), labels = paste("Mode ≈", round(mode_val, 2)), pos = 4)
+  }
+
+  return(mode_val)
 }
