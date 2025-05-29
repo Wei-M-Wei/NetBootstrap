@@ -206,7 +206,6 @@ network_bootstrap = function(y, X, N, bootstrap_time, index, data, link = 'probi
 
   # bootstrap procedure
   for (k in seq(bootstrap_time)) {
-    set.seed(k)
     if (link == 'probit'){
       epsi_it = rnorm(length(y), 0, 1)
     }else{
