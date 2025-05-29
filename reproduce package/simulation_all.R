@@ -18,14 +18,14 @@ cl <- makeCluster(num_cores-5)
 registerDoParallel(cl)
 
 # probit model network
-N = 30
+N = 50
 N_seq = c(N)
 
 # bootstrap times
-bootstrap_time = 200
+bootstrap_time = 2
 
 # repitition times
-mle_num = 200
+mle_num = 20
 design = 1
 
 # parameters
@@ -165,9 +165,9 @@ for(design in c(1,2,3,4)){
       # APE_MLE = getAPEs(fit_analytical$est_MLE, panel.structure = 'classic')
       # APE_MLE_estimate = summary(APE_MLE)$cm[1]
       # APE_MLE_se = APE_analytical$se
-      # APE_corrected = getAPEs(fit_analytical$est, panel.structure = 'classic')
-      # APE_corrected_estimate = summary(APE_corrected)$cm[1]
-      # APE_corrected_se = summary(APE_corrected)$cm[2]
+      APE_corrected = getAPEs(fit_analytical$est, panel.structure = 'classic')
+      APE_corrected_estimate = summary(APE_corrected)$cm[1]
+      APE_corrected_se = summary(APE_corrected)$cm[2]
       APE_se_formula = c(APE_MLE$se, APE_bootstrap$se, APE_bootstrap$se, APE_jackknife$se, APE_analytical$se)
       APE_se_formula_own = c(APE_MLE$se, APE_bootstrap$se, APE_bootstrap$se, APE_jackknife$se, APE_analytical$se)
 
@@ -193,7 +193,7 @@ for(design in c(1,2,3,4)){
       t_index = t_index + 1
     } else {
       all_estimator = matrix(0, length(result), 6*K)
-      Boot_estimate_all = matrix(0, length(result), K*bootstrap_time)
+      Boot_estimate_all = c()
       se_estimator = matrix(0, length(result), 6*K)
       p_cover_bootstrap = rep(0, K)
       p_cover_MLE = rep(0, K)
@@ -223,11 +223,11 @@ for(design in c(1,2,3,4)){
         APE_se_formula_own[i, ] = c(result[[i]]$APE_se_formula_own)
         cover_APE_bootstrap = cover_APE_bootstrap + result[[i]]$cover_APE_bootstrap
         # all bootstrap estimate
-        Boot_estimate_all[i,] = result[[i]]$bootstrap_estimate
+        Boot_estimate_all = rbind(Boot_estimate_all, result[[i]]$bootstrap_estimate)
       }
 
       # beta bias
-      Estimate_bias[t_index, ] = apply(all_estimator - rep(beta, 6), 2, mean)
+      Estimate_bias[t_index, ] = apply(all_estimator, 2, mean) - rep(beta, 6)
       Estimate_se[t_index, ] = apply(se_estimator, 2, mean)
       Estimate_deviation[t_index, ] = apply(all_estimator , 2, sd)
 
