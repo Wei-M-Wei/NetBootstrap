@@ -119,7 +119,7 @@ network_bootstrap = function(y, X, N, bootstrap_time, index, data, link = 'probi
     if (p==1){
       X = data[,2]
     }else{
-      X = data[,(2:p+1)]
+      X = data[,(2:(p+1))]
     }
   }else{
     colnames(data) = c('y', colnames(X), index)
@@ -190,11 +190,28 @@ network_bootstrap = function(y, X, N, bootstrap_time, index, data, link = 'probi
   log_likelihood_estimate_B_NULL = NULL
   X_design = apply(X_design, 2, as.numeric)
 
+  # calculate the eta = xbeta + alpda_i + gamma_j
+  X_to = X
+  alpha <- cof[(K + 1):(K + N)]
+  gamma <- cof[(K + N + 1):(K + N + N)]
+  # Generate implied id and time indices
+  id_idx <- rep(1:N, each = N)     # id changes slowly
+  time_idx <- rep(1:N, times = N)  # time changes quickly
+  keep <- id_idx != time_idx
+  alpha_sub <- alpha[time_idx[keep]]
+  gamma_sub <- gamma[id_idx[keep]]
+  # Reconstruct eta = Xβ + α_i + γ_t
+  eta_MLE = cof[1:K] %*% t( X_to ) + (alpha_sub + gamma_sub)
+
   # bootstrap procedure
   for (k in seq(bootstrap_time)) {
     set.seed(k)
-    epsi_it = rnorm(length(y), 0, 1)
-    Y = as.numeric(X_design %*% cof > epsi_it)
+    if (link == 'probit'){
+      epsi_it = rnorm(length(y), 0, 1)
+    }else{
+      epsi_it = rlogis(N, location = 0, scale = 1)
+    }
+    Y = as.numeric(eta_MLE > epsi_it)
     data_boostrap <- data.frame(y = Y, X = X_design)
     model_B <-
       glm(y ~ . - 1, data = data_boostrap, family = binomial(link = link), control = glm.control(epsilon = 1e-10))
@@ -219,8 +236,7 @@ network_bootstrap = function(y, X, N, bootstrap_time, index, data, link = 'probi
   # get the final results
   cof_B[,K+1] = apply(cof_B[,(N+K+1):(N+N+K)],1,sum) - apply(cof_B[,(K+2):(N+K)],1,sum)
 
-  # save the original matrix X
-  X_to = X
+
   # calculate the eta = xbeta + alpda_i + gamma_j
   alpha <- cof_B[,(K + 1):(K + N)]
   gamma <- cof_B[,(K + N + 1):(K + N + N)]
@@ -233,17 +249,6 @@ network_bootstrap = function(y, X, N, bootstrap_time, index, data, link = 'probi
   # Reconstruct eta = Xβ + α_i + γ_t
   eta = cof_B[,1:K] %*% t( X_to ) + (alpha_sub + gamma_sub)
 
-  # calculate the eta = xbeta + alpda_i + gamma_j
-  alpha <- cof[(K + 1):(K + N)]
-  gamma <- cof[(K + N + 1):(K + N + N)]
-  # Generate implied id and time indices
-  id_idx <- rep(1:N, each = N)     # id changes slowly
-  time_idx <- rep(1:N, times = N)  # time changes quickly
-  keep <- id_idx != time_idx
-  alpha_sub <- alpha[time_idx[keep]]
-  gamma_sub <- gamma[id_idx[keep]]
-  # Reconstruct eta = Xβ + α_i + γ_t
-  eta_MLE = cof[1:K] %*% t( X_to ) + (alpha_sub + gamma_sub)
 
 
   cof_boost_mean = apply(cof_B, 2, mean)
@@ -323,7 +328,7 @@ split_jackknife = function(y, X, N, index, data, link = 'probit', beta_NULL = NU
     if (p==1){
       X = data_j[,2]
     }else{
-      X = data_j[,(2:p+1)]
+      X = data_j[,(2:(p+1))]
     }
   }else{
     colnames(data_j) = c('y', colnames(X), index)
@@ -356,6 +361,7 @@ split_jackknife = function(y, X, N, index, data, link = 'probit', beta_NULL = NU
   X_save = X_design
   X_to = X
   data_in <- data.frame(y = y, X = X_design)
+  data_save = data_in
 
   # MLE
   model <-
@@ -422,7 +428,7 @@ split_jackknife = function(y, X, N, index, data, link = 'probit', beta_NULL = NU
 
 
     model_j <-
-      speedglm(y ~ . - 1, data = data_in, family = binomial(link = "probit"))
+      speedglm(y ~ . - 1, data = data_in, family = binomial(link = link))
     fit_j = summary(model_j)
     Hessian_inv_1_j = vcov(model_j)
     cof_j = rbind(cof_j, unlist(coef(model_j)))
@@ -434,7 +440,7 @@ split_jackknife = function(y, X, N, index, data, link = 'probit', beta_NULL = NU
       formula <- as.formula( paste("y ~ -1 +", paste(colnames(data_2[,-2])[-1], collapse = " + "), "+ offset(offset_term)"))
       data_2$offset_term <- beta_NULL * X_design[,1]
       model_j_2 <-
-        glm(formula = formula, data = data_2, family=binomial(link = 'probit'))
+        glm(formula = formula, data = data_2, family=binomial(link = link))
       fit_j_2 = summary(model_j_2)
       Hessian_inv_2_constrain_j = vcov(model_j_2)
       cof_constrain_j = rbind(cof_constrain_j, c(beta_NULL, unlist(coef(model_j_2))))
@@ -447,8 +453,23 @@ split_jackknife = function(y, X, N, index, data, link = 'probit', beta_NULL = NU
   cof_j[,K+1] = apply(cof_j[,(N+K+1):(N+N+K)],1,sum) - apply(cof_j[,(K+2):(N+K)],1,sum)
   cof_jack_all = cof_j
 
+  # estimate of fixed effects
+  data_2 <- data_save
+  formula <- as.formula( paste("y ~ -1 +", paste(colnames(data_2[,-seq(2,K+1,1)])[-1], collapse = " + "), "+ offset(offset_term)"))
+  if( K != 1){
+    data_2$offset_term <- as.vector(X_save[,1:K] %*% matrix(estimate_jack[1:K]))
+  }else{
+    data_2$offset_term <- as.vector(estimate_jack[1:K] %*% X_save[,1:K])
+  }
+  model_j_2 <-
+    glm(formula = formula, data = data_2, family=binomial(link = link))
+  fit_j_2 = summary(model_j_2)
+  estimate_jack = c(estimate_jack[1:K], unlist(coef(model_j_2)))
+  estimate_jack[K+1] = sum(estimate_jack[(N+K+1):(N+N+K)]) - sum(estimate_jack[(K+2):(N+K)])
 
-  # calculate the eta = xbeta + alpda_i + gamma_j
+
+
+  # calculate the eta = xbeta + alpda_i + gamma_j for each split
   alpha <- cof_j[,(K + 1):(K + N)]
   gamma <- cof_j[,(K + N + 1):(K + N + N)]
   # Generate implied id and time indices
@@ -492,9 +513,7 @@ split_jackknife = function(y, X, N, index, data, link = 'probit', beta_NULL = NU
   # use the MLE estimator
   # the use of bias-corrected estimator is similar to the biased one
   # calculate the X'beta + pi, formed as a matrix
-  cov_sum_1 = X_save[,1] * cof[1]
-  cov_sum_2 = X_save[,-1] %*% cof[-1]
-  cov_sum = vector_to_matrix(cov_sum_1+cov_sum_2, N, ind1 = data_j[,index[1]], ind2 = data_j[,index[2]])
+  cov_sum = vector_to_matrix(eta_jack, N, ind1 = data_j[,index[1]], ind2 = data_j[,index[2]])
   X_to = as.matrix(X)
   y_to = y
   se_corrected = rep(0, K)
@@ -507,21 +526,28 @@ split_jackknife = function(y, X, N, index, data, link = 'probit', beta_NULL = NU
     y = vector_to_matrix(y_to, N, ind1 = data[,index[1]], ind2 = data[,index[2]])
     y[row(y) == col(y)] = 0
 
-
-    Phi_XB <- pnorm(cov_sum)  # CDF (Φ(Xβ))
-    phi_XB <- dnorm(cov_sum)  # PDF (φ(Xβ))
-    dd_F_fix = -cov_sum * phi_XB
-    ddd_F_fix = cov_sum^2 * phi_XB - phi_XB
-    Phi_XB[row(Phi_XB) == col(Phi_XB)] = 0
-    phi_XB[row(phi_XB) == col(phi_XB)] = 0
-    Phi_XB <- pmax(Phi_XB, 1e-9)
-    Phi_XB <- pmin(Phi_XB, 1 - 1e-9)
-
-
-    #### Another way to calculate the bias corrected
-    # another way to calculate the analytical corrected estimate
-    H = phi_XB/(Phi_XB*(1-Phi_XB))
-    small_w = H * phi_XB
+    if (link == 'probit'){
+      Phi_XB <- pnorm(cov_sum)  # CDF (Φ(Xβ))
+      phi_XB <- dnorm(cov_sum)  # PDF (φ(Xβ))
+      Phi_XB[row(Phi_XB) == col(Phi_XB)] = 0
+      phi_XB[row(phi_XB) == col(phi_XB)] = 0
+      Phi_XB <- pmax(Phi_XB, 1e-9)
+      Phi_XB <- pmin(Phi_XB, 1 - 1e-9)
+      #### Another way to calculate the bias corrected
+      # another way to calculate the analytical corrected estimate
+      H = phi_XB/(Phi_XB*(1-Phi_XB))
+      small_w = H * phi_XB
+    }else{
+      Phi_XB <- plogis(cov_sum)  # CDF (Φ(Xβ))
+      phi_XB <- dlogis(cov_sum)  # PDF (φ(Xβ))
+      Phi_XB[row(Phi_XB) == col(Phi_XB)] = 0
+      phi_XB[row(phi_XB) == col(phi_XB)] = 0
+      Phi_XB <- pmax(Phi_XB, 1e-9)
+      Phi_XB <- pmin(Phi_XB, 1 - 1e-9)
+      H = matrix(1, N, N)
+      diag(H) = 0
+      small_w = phi_XB
+    }
 
     # W_hat
     X_into = matrix_to_panel_df(X)
@@ -582,7 +608,7 @@ analytical_Amrei = function(y, X, N, index, data, link = 'probit', L = 1, beta_N
     if (p==1){
       X = data[,2]
     }else{
-      X = data[,(2:p+1)]
+      X = data[,(2:(p+1))]
     }
   }else{
     colnames(data) = c('y', colnames(X), index)
@@ -592,7 +618,14 @@ analytical_Amrei = function(y, X, N, index, data, link = 'probit', L = 1, beta_N
     y = data$y
     X = data[,colnames(X)]
   }
-  mod <- alpaca::feglm(y ~ X | index.1 + index.2, data = data, family = binomial(link), control = feglmControl( dev.tol = 1e-10, center.tol = 1e-10))
+  if ( K == 1){
+    mod <- alpaca::feglm(y ~ X | index.1 + index.2 , data = data, family = binomial(link), control = feglmControl( dev.tol = 1e-10, center.tol = 1e-10))
+  }else{
+    formula <- as.formula(
+      paste("y ~", paste(names(X), collapse = " + "), '| index.1 + index.2')
+    )
+    mod <- alpaca::feglm(formula , data = data, family = binomial(link), control = feglmControl( dev.tol = 1e-10, center.tol = 1e-10))
+  }
   return(list(est_MLE = mod, est = biasCorr(mod, L = L, panel.structure = c( "classic"))))
 
 }
@@ -616,7 +649,7 @@ analytical_corrected = function(y, X, N, index, data, link = 'probit', L = 1, be
     if (p==1){
       X = data[,2]
     }else{
-      X = data[,(2:p+1)]
+      X = data[,(2:(p+1))]
     }
   }else{
     colnames(data) = c('y', colnames(X), index)
@@ -696,20 +729,34 @@ analytical_corrected = function(y, X, N, index, data, link = 'probit', L = 1, be
     X = vector_to_matrix(X_to[,index_covariate], N, ind1 = data[,index[1]], ind2 = data[,index[2]])
     y = vector_to_matrix(y_to, N, ind1 = data[,index[1]], ind2 = data[,index[2]])
 
-    Phi_XB <- pnorm(cov_sum)  # CDF (Φ(Xβ))
-    phi_XB <- dnorm(cov_sum)  # PDF (φ(Xβ))
-    dd_F_fix = -cov_sum * phi_XB
-    ddd_F_fix = cov_sum^2 * phi_XB - phi_XB
-    Phi_XB[row(Phi_XB) == col(Phi_XB)] = 0
-    phi_XB[row(phi_XB) == col(phi_XB)] = 0
-    Phi_XB <- pmax(Phi_XB, 1e-9)
-    Phi_XB <- pmin(Phi_XB, 1 - 1e-9)
 
+    if (link == 'probit'){
+      Phi_XB <- pnorm(cov_sum)  # CDF (Φ(Xβ))
+      phi_XB <- dnorm(cov_sum)  # PDF (φ(Xβ))
+      dd_F_fix = -cov_sum * phi_XB
+      Phi_XB[row(Phi_XB) == col(Phi_XB)] = 0
+      phi_XB[row(phi_XB) == col(phi_XB)] = 0
+      Phi_XB <- pmax(Phi_XB, 1e-9)
+      Phi_XB <- pmin(Phi_XB, 1 - 1e-9)
+      #### Another way to calculate the bias corrected
+      # another way to calculate the analytical corrected estimate
+      H = phi_XB/(Phi_XB*(1-Phi_XB))
+      small_w = H * phi_XB
+    }else{
+      Phi_XB <- plogis(cov_sum)  # CDF (Φ(Xβ))
+      phi_XB <- dlogis(cov_sum)  # PDF (φ(Xβ))
+      dd_F_fix = phi_XB * ( 1 - 2 * Phi_XB)
+      Phi_XB[row(Phi_XB) == col(Phi_XB)] = 0
+      phi_XB[row(phi_XB) == col(phi_XB)] = 0
+      Phi_XB <- pmax(Phi_XB, 1e-9)
+      Phi_XB <- pmin(Phi_XB, 1 - 1e-9)
 
-    #### Another way to calculate the bias corrected
-    # another way to calculate the analytical corrected estimate
-    H = phi_XB/(Phi_XB*(1-Phi_XB))
-    small_w = H * phi_XB
+      #### Another way to calculate the bias corrected
+      # another way to calculate the analytical corrected estimate
+      H = matrix(1, N, N)
+      diag(H) = 0
+      small_w = phi_XB
+    }
 
     # W_hat
     X_into = matrix_to_panel_df(X)
@@ -722,13 +769,6 @@ analytical_corrected = function(y, X, N, index, data, link = 'probit', L = 1, be
     B_hat[index_covariate,] = -(0.5/N) * compute_B_hat(2* H * (y - Phi_XB), small_w * tilde_X_list[[index_covariate]], H * dd_F_fix * tilde_X_list[[index_covariate]], small_w, L)
   }
 
-  # test1 = H * (y - Phi_XB)
-  # test2 =  small_w * tilde_X_list[[index_covariate]]
-  # test3 = H * dd_F_fix * tilde_X_list[[index_covariate]]
-  # test4 = small_w
-  # test5 = y
-  # test6 = Phi_XB
-  # test7 = H
 
   tilde_X_array <- array(unlist(tilde_X_list), dim = c(N, N, K))
 
@@ -744,10 +784,12 @@ analytical_corrected = function(y, X, N, index, data, link = 'probit', L = 1, be
       }
     }
   }
+  se_MLE =  sqrt( diag(solve(W_hat)) /(N*(N-1)) )
 
   # estimate
   estimate_analytical_another = est[1:K] - solve(W_hat)%*%B_hat*(1/(N-1)) - solve(W_hat)%*%D_hat*(1/N)
 
+  # estimate of fixed effects
   data_2 <- data_in
   formula <- as.formula( paste("y ~ -1 +", paste(colnames(data_2[,-seq(2,K+1,1)])[-1], collapse = " + "), "+ offset(offset_term)"))
   if( K != 1){
@@ -757,7 +799,7 @@ analytical_corrected = function(y, X, N, index, data, link = 'probit', L = 1, be
   }
 
   model_j_2 <-
-    glm(formula = formula, data = data_2, family=binomial(link = 'probit'))
+    glm(formula = formula, data = data_2, family=binomial(link = link))
   fit_j_2 = summary(model_j_2)
   estimate_analytical_another = c(estimate_analytical_another, unlist(coef(model_j_2)))
   estimate_analytical_another[K+1] = sum(estimate_analytical_another[(N+K+1):(N+N+K)]) - sum(estimate_analytical_another[(K+2):(N+K)])
@@ -776,7 +818,7 @@ analytical_corrected = function(y, X, N, index, data, link = 'probit', L = 1, be
   eta = estimate_analytical_another[1:K] %*% t( X_to ) + (alpha_sub + gamma_sub)
 
 
-  # re-update the standard error
+  # re-update the standard error by using the corrected estimate
   cov_sum = vector_to_matrix( as.vector(eta), N, ind1 = data[,index[1]], ind2 = data[,index[2]])
   tilde_X_list <- vector("list", K)
   W_hat <- matrix(0, nrow = K, ncol = K)
@@ -788,20 +830,33 @@ analytical_corrected = function(y, X, N, index, data, link = 'probit', L = 1, be
     y = vector_to_matrix(y_to, N, ind1 = data[,index[1]], ind2 = data[,index[2]])
     y[row(y) == col(y)] = 0
 
-    Phi_XB <- pnorm(cov_sum)  # CDF (Φ(Xβ))
-    phi_XB <- dnorm(cov_sum)  # PDF (φ(Xβ))
-    dd_F_fix = -cov_sum * phi_XB
-    ddd_F_fix = cov_sum^2 * phi_XB - phi_XB
-    Phi_XB[row(Phi_XB) == col(Phi_XB)] = 0
-    phi_XB[row(phi_XB) == col(phi_XB)] = 0
-    Phi_XB <- pmax(Phi_XB, 1e-9)
-    Phi_XB <- pmin(Phi_XB, 1 - 1e-9)
+    if (link == 'probit'){
+      Phi_XB <- pnorm(cov_sum)  # CDF (Φ(Xβ))
+      phi_XB <- dnorm(cov_sum)  # PDF (φ(Xβ))
+      dd_F_fix = -cov_sum * phi_XB
+      Phi_XB[row(Phi_XB) == col(Phi_XB)] = 0
+      phi_XB[row(phi_XB) == col(phi_XB)] = 0
+      Phi_XB <- pmax(Phi_XB, 1e-9)
+      Phi_XB <- pmin(Phi_XB, 1 - 1e-9)
+      #### Another way to calculate the bias corrected
+      # another way to calculate the analytical corrected estimate
+      H = phi_XB/(Phi_XB*(1-Phi_XB))
+      small_w = H * phi_XB
+    }else{
+      Phi_XB <- plogis(cov_sum)  # CDF (Φ(Xβ))
+      phi_XB <- dlogis(cov_sum)  # PDF (φ(Xβ))
+      dd_F_fix = phi_XB * ( 1 - 2 * Phi_XB)
+      Phi_XB[row(Phi_XB) == col(Phi_XB)] = 0
+      phi_XB[row(phi_XB) == col(phi_XB)] = 0
+      Phi_XB <- pmax(Phi_XB, 1e-9)
+      Phi_XB <- pmin(Phi_XB, 1 - 1e-9)
 
-
-    #### Another way to calculate the bias corrected
-    # another way to calculate the analytical corrected estimate
-    H = phi_XB/(Phi_XB*(1-Phi_XB))
-    small_w = H * phi_XB
+      #### Another way to calculate the bias corrected
+      # another way to calculate the analytical corrected estimate
+      H = matrix(1, N, N)
+      diag(H) = 0
+      small_w = phi_XB
+    }
 
     # W_hat
     X_into = matrix_to_panel_df(X)
@@ -832,8 +887,7 @@ analytical_corrected = function(y, X, N, index, data, link = 'probit', L = 1, be
   se =  sqrt( diag(solve(W_hat)) /(N*(N-1)) )
 
 
-  res = list(est = estimate_analytical_another, se = se,
-             eta = eta, eta_MLE = eta_MLE, est_MLE = cof)
+  res = list(est = estimate_analytical_another, se_MLE = se_MLE, se = se, eta = eta, eta_MLE = eta_MLE, est_MLE = cof)
   return(res)
 
 }
@@ -842,6 +896,7 @@ analytical_corrected = function(y, X, N, index, data, link = 'probit', L = 1, be
 get_APE_bootstrap <- function(y, X, N, data, fit, model = 'probit'){
   K = dim(X)[2]
   APE_MLE = rep(0 ,K)
+  APE = matrix(0, length(fit$est_bootstrap_all[,1]), K)
   APE_mean_bootstrap = rep(0 ,K)
   APE_median_bootstrap = rep(0 ,K)
   se = rep(0, K)
@@ -856,22 +911,38 @@ get_APE_bootstrap <- function(y, X, N, data, fit, model = 'probit'){
     if (is.numeric(X) && length(unique(X)) == 2) {
       X_max = max(unique(X))
       X_min = min(unique(X))
-      APE_MLE_estimate = (pnorm(cof_MLE * X_max + eta_MLE - matrix(cof_MLE * X) ) - pnorm(cof_MLE * X_min + eta_MLE - matrix(cof_MLE * X) ) ) / (X_max - X_min)
-      for (i in 1:length(cof_estimate)) {
-        APE_estimate[i,] = (pnorm(cof_estimate[i]* X_max + eta[i,] - cof_estimate[i] * X ) - pnorm(cof_estimate[i]* X_min + eta[i,] - cof_estimate[i] * X )) / (X_max - X_min)
-      }}else{
+      if (model == 'probit'){
+        APE_MLE_estimate = (pnorm(cof_MLE * X_max + eta_MLE - matrix(cof_MLE * X) ) - pnorm(cof_MLE * X_min + eta_MLE - matrix(cof_MLE * X) ) )
+        for (i in 1:length(cof_estimate)) {
+          APE_estimate[i,] = (pnorm(cof_estimate[i]* X_max + eta[i,] - cof_estimate[i] * X ) - pnorm(cof_estimate[i]* X_min + eta[i,] - cof_estimate[i] * X ))
+        }
+      }else{
+        APE_MLE_estimate = (plogis(cof_MLE * X_max + eta_MLE - matrix(cof_MLE * X) ) - plogis(cof_MLE * X_min + eta_MLE - matrix(cof_MLE * X) ) )
+        for (i in 1:length(cof_estimate)) {
+          APE_estimate[i,] = (plogis(cof_estimate[i]* X_max + eta[i,] - cof_estimate[i] * X ) - plogis(cof_estimate[i]* X_min + eta[i,] - cof_estimate[i] * X ))
+        }
+      }
+
+    }else{
+      if (model == 'probit'){
         APE_MLE_estimate = cof_MLE * dnorm(eta_MLE)
         for (i in 1:length(cof_estimate)) {
           APE_estimate[i,] = cof_estimate[i]* dnorm( eta[i,] )
         }
+      }else{
+        APE_MLE_estimate = cof_MLE * dlogis(eta_MLE)
+        for (i in 1:length(cof_estimate)) {
+          APE_estimate[i,] = cof_estimate[i]* dlogis( eta[i,] )
+        }
       }
-    APE = rowMeans(APE_estimate)
+    }
+    APE[,k] = rowMeans(APE_estimate)
     APE_MLE[k] = mean(APE_MLE_estimate)
-    APE_mean_bootstrap[k] = APE_MLE[k] - (mean(APE) - APE_MLE[k])
-    APE_median_bootstrap[k] = APE_MLE[k] - (median(APE) - APE_MLE[k])
+    APE_mean_bootstrap[k] = APE_MLE[k] - (mean(APE[,k]) - APE_MLE[k])
+    APE_median_bootstrap[k] = APE_MLE[k] - (median(APE[,k]) - APE_MLE[k])
     se[k] = sd(APE)
   }
-  res = list(APE_MLE = APE_MLE, APE_mean_bootstrap = APE_mean_bootstrap, APE_median_bootstrap = APE_median_bootstrap, se = se)
+  res = list(APE_MLE = APE_MLE, APE_mean_bootstrap = APE_mean_bootstrap, APE_median_bootstrap = APE_median_bootstrap, APE_bootstrap_all = APE, se = se)
   return(res)
 }
 
@@ -904,22 +975,28 @@ get_APE_analytical<- function(y, X, N, data, index, fit, L = 1, model = 'probit'
       X_max = as.numeric(max(unique(X)))
       X_min = as.numeric(min(unique(X)))
       test1 = dnorm(cof_estimate* X_max + eta - cof_estimate * X )
-      APE_estimate = (pnorm(cof_estimate* X_max + eta - cof_estimate * X ) - pnorm(cof_estimate* X_min + eta - cof_estimate * X)) / (X_max - X_min)
-      d_APE_estimate = (dnorm(cof_estimate* X_max + eta - cof_estimate * X ) - dnorm(cof_estimate* X_min + eta - cof_estimate * X)) / (X_max - X_min)
-      dd_APE_estimate = (-(cof_estimate* X_max + eta - cof_estimate * X) * dnorm(cof_estimate* X_max + eta - cof_estimate * X ) + (cof_estimate* X_min + eta - cof_estimate * X)  * dnorm(cof_estimate* X_min + eta - cof_estimate * X))/ (X_max - X_min)
 
-      APE_estimate_MLE = (pnorm(cof_estimate_MLE * X_max + eta_MLE - cof_estimate_MLE * X ) - pnorm(cof_estimate_MLE* X_min + eta_MLE - cof_estimate_MLE * X)) / (X_max - X_min)
-      d_APE_estimate_MLE = (dnorm(cof_estimate_MLE * X_max + eta_MLE - cof_estimate_MLE * X ) - dnorm(cof_estimate_MLE* X_min +eta_MLE - cof_estimate_MLE * X) ) / (X_max - X_min)
-      dd_APE_estimate_MLE = (-(cof_estimate_MLE * X_max + eta_MLE - cof_estimate_MLE * X) * dnorm(cof_estimate_MLE* X_max + eta_MLE - cof_estimate_MLE * X ) + (cof_estimate_MLE* X_min + eta_MLE - cof_estimate_MLE * X)  * dnorm(cof_estimate_MLE* X_min + eta_MLE - cof_estimate_MLE * X)) / (X_max - X_min)
-
+      if (model == 'probit'){
+        APE_estimate = (pnorm(cof_estimate* X_max + eta - cof_estimate * X ) - pnorm(cof_estimate* X_min + eta - cof_estimate * X))
+        d_APE_estimate = (dnorm(cof_estimate* X_max + eta - cof_estimate * X ) - dnorm(cof_estimate* X_min + eta - cof_estimate * X))
+        dd_APE_estimate = (-(cof_estimate* X_max + eta - cof_estimate * X) * dnorm(cof_estimate* X_max + eta - cof_estimate * X ) + (cof_estimate* X_min + eta - cof_estimate * X)  * dnorm(cof_estimate* X_min + eta - cof_estimate * X))
+      }else{
+        APE_estimate = (plogis(cof_estimate* X_max + eta - cof_estimate * X ) - plogis(cof_estimate* X_min + eta - cof_estimate * X))
+        d_APE_estimate = (dlogis(cof_estimate* X_max + eta - cof_estimate * X ) - dlogis(cof_estimate* X_min + eta - cof_estimate * X))
+        dd_APE_estimate = (dlogis(cof_estimate* X_max + eta - cof_estimate * X ) * ( 1 - 2 * plogis(cof_estimate* X_max + eta - cof_estimate * X ) )
+                           - dlogis(cof_estimate* X_min + eta - cof_estimate * X) * ( 1 - 2 * plogis(cof_estimate* X_min + eta - cof_estimate * X)))
+      }
     }else{
-      APE_estimate = cof_estimate * dnorm(eta)
-      d_APE_estimate = cof_estimate * (-eta) * dnorm(eta)
-      dd_APE_estimate = cof_estimate*(- dnorm(eta) + eta^2 * dnorm(eta))
+      if (model == 'probit'){
+        APE_estimate = cof_estimate * dnorm(eta)
+        d_APE_estimate = cof_estimate * (-eta) * dnorm(eta)
+        dd_APE_estimate = cof_estimate*(- dnorm(eta) + eta^2 * dnorm(eta))
+      }else{
+        APE_estimate = cof_estimate * dlogis(eta)
+        d_APE_estimate = cof_estimate * (1 - 2 * plogis(eta)) * dlogis(eta)
+        dd_APE_estimate = cof_estimate* (- 2 * dlogis(eta)) * dlogis(eta) + cof_estimate * (1 - 2 * plogis(eta)) * dlogis(eta) * (1-2*plogis(eta))
+      }
 
-      APE_estimate_MLE = cof_estimate_MLE * dnorm(eta_MLE)
-      d_APE_estimate_MLE = cof_estimate_MLE * (-eta_MLE) * dnorm(eta_MLE)
-      dd_APE_estimate_MLE = cof_estimate_MLE * (- dnorm(eta_MLE) + eta_MLE^2 * dnorm(eta_MLE))
     }
 
 
@@ -936,49 +1013,47 @@ get_APE_analytical<- function(y, X, N, data, index, fit, L = 1, model = 'probit'
     APE_estimate = vector_to_matrix( APE_estimate, N, ind1 = data[,index[1]], ind2 = data[,index[2]])
     d_APE_estimate = vector_to_matrix( d_APE_estimate, N, ind1 = data[,index[1]], ind2 = data[,index[2]])
     dd_APE_estimate = vector_to_matrix( dd_APE_estimate, N, ind1 = data[,index[1]], ind2 = data[,index[2]])
-    APE_estimate_MLE = vector_to_matrix( APE_estimate_MLE, N, ind1 = data[,index[1]], ind2 = data[,index[2]])
-    d_APE_estimate_MLE = vector_to_matrix( d_APE_estimate_MLE, N, ind1 = data[,index[1]], ind2 = data[,index[2]])
-    dd_APE_estimate_MLE = vector_to_matrix( dd_APE_estimate_MLE, N, ind1 = data[,index[1]], ind2 = data[,index[2]])
 
     APE_list[[k]] =  APE_estimate
     d_APE_list[[k]] =  d_APE_estimate
-    APE_MLE_list[[k]] =  APE_estimate_MLE
-    d_APE_MLE_list[[k]] =  d_APE_estimate_MLE
-
 
     # use corrected eta to calculate the martices in the formula
 
     cov_sum = vector_to_matrix( t(eta), N, ind1 = data[,index[1]], ind2 = data[,index[2]])
-    Phi_XB <- pnorm(cov_sum)  # CDF (Φ(Xβ))
-    phi_XB <- dnorm(cov_sum)  # PDF (φ(Xβ))
-    Phi_XB <- pmax(Phi_XB, 1e-9)
-    Phi_XB <- pmin(Phi_XB, 1 - 1e-9)
+    if (model == 'probit'){
+      Phi_XB <- pnorm(cov_sum)  # CDF (Φ(Xβ))
+      phi_XB <- dnorm(cov_sum)  # PDF (φ(Xβ))
+      Phi_XB <- pmax(Phi_XB, 1e-9)
+      Phi_XB <- pmin(Phi_XB, 1 - 1e-9)
+      dd_F_fix = -cov_sum * phi_XB
+      H = phi_XB/(Phi_XB*(1-Phi_XB))
+      small_w = H * phi_XB
+    }else{
+      Phi_XB <- plogis(cov_sum)  # CDF (Φ(Xβ))
+      phi_XB <- dlogis(cov_sum)  # PDF (φ(Xβ))
+      dd_F_fix = phi_XB * ( 1 - 2 * Phi_XB)
+      Phi_XB[row(Phi_XB) == col(Phi_XB)] = 0
+      phi_XB[row(phi_XB) == col(phi_XB)] = 0
+      Phi_XB <- pmax(Phi_XB, 1e-9)
+      Phi_XB <- pmin(Phi_XB, 1 - 1e-9)
+      H = matrix(1, N, N)
+      diag(H) = 0
+      small_w = phi_XB
+    }
 
-    dd_F_fix = -cov_sum * phi_XB
-    ddd_F_fix = cov_sum^2 * phi_XB - phi_XB
-
-    #### Another way to calculate the bias corrected
-    # another way to calculate the analytical corrected estimate
-    H = phi_XB/(Phi_XB*(1-Phi_XB))
-    small_w = H * phi_XB
 
     # B_hat
-    X_into = matrix_to_panel_df(d_APE_estimate/small_w)
-    EPsi = d_APE_estimate/small_w
-    diag(EPsi) = 0
+    X_into = matrix_to_panel_df(-d_APE_estimate/small_w)
     weight = matrix_to_panel_df(small_w)$X
     Psi = get_weighted_projection_fitted_exclude_t_eq_i(X_into$X, weight, X_into$id, X_into$time)
     Psi_list[[k]]= vector_to_matrix(Psi, N, ind1 = X_into$id, ind2 = X_into$time)
-    tilde_Psi_list[[k]] = EPsi - Psi_list[[k]]
-    diag(tilde_Psi_list[[k]]) = 0
-    diag(small_w) = 0
-    diag(H) = 0
-
+    tilde_Psi_list[[k]] = -d_APE_estimate/small_w - Psi_list[[k]]
+    diag(tilde_Psi_list[[k]] ) = 0
     # D_hat
-    D_hat = (0.5 / (N-1)) * sum(colSums((dd_APE_estimate -  Psi_list[[k]] * H * dd_F_fix) * (1 - diag(N))) / colSums(small_w * (1 - diag(N))))
+    D_hat = (0.5 / (N-1)) * sum(colSums((dd_APE_estimate +  Psi_list[[k]] * H * dd_F_fix) * (1 - diag(N))) / colSums(small_w * (1 - diag(N))))
 
     # B_hat
-    B_hat = (0.5/N) * compute_B_hat(2* H * (y - Phi_XB), -small_w * tilde_Psi_list[[k]], dd_APE_estimate - H * dd_F_fix * Psi_list[[k]] , small_w, L)
+    B_hat = (0.5/N) * compute_B_hat(2* H * (y - Phi_XB), -small_w * tilde_Psi_list[[k]], dd_APE_estimate + H * dd_F_fix * Psi_list[[k]] , small_w, L)
 
 
     APE_analytical[k] = sum(APE_estimate)/(N*(N-1)) - B_hat*(1/(N-1)) - D_hat*(1/N)
@@ -995,8 +1070,6 @@ get_APE_analytical<- function(y, X, N, data, index, fit, L = 1, model = 'probit'
   tilde_X_array <- array(unlist(tilde_X_list), dim = c(N, N, K))
   Psi_array <- array(unlist(Psi_list), dim = c(N, N, K))
   tilde_Psi_array <- array(unlist(tilde_Psi_list), dim = c(N, N, K))
-  APE_MLE_array <- array(unlist(APE_MLE_list), dim = c(N, N, K))
-  d_APE_MLE_array <- array(unlist(d_APE_MLE_list), dim = c(N, N, K))
   APE_array <- array(unlist(APE_list), dim = c(N, N, K))
   d_APE_array <- array(unlist(d_APE_list), dim = c(N, N, K))
 
@@ -1019,18 +1092,15 @@ get_APE_analytical<- function(y, X, N, data, index, fit, L = 1, model = 'probit'
   for (i in 1:N) {
     for (j in 1:N) {
       if(j!=i){
-        tau[i,j,] = as.matrix(t(D_beta_APE) %*% solve(W_hat)) * as.matrix(H[i,j] * (y[i,j] - Phi_XB[i,j]) * tilde_X_array[i,j,]) - Psi_array[i,j,] * H[i,j] * (y[i,j] - Phi_XB[i,j])
+        tau[i,j,] = as.matrix(t(D_beta_APE) %*% solve(W_hat)) * t(as.matrix(H[i,j] * (y[i,j] - Phi_XB[i,j]) * tilde_X_array[i,j,])) - Psi_array[i,j,] * H[i,j] * (y[i,j] - Phi_XB[i,j])
       }
     }
   }
 
-  tilde_APE_MLE_array = array(0, dim = c(N, N, K))
-  for (k in 1:K) {
-    APE_MLE[k] = sum(APE_MLE_array[,,k])/(N*(N-1))
-  }
+  tilde_APE_array = array(0, dim = c(N, N, K))
 
-  se =  sqrt( diag(compute_expression_array(tilde_APE_MLE_array, tau)) )/(N*(N-1))
-  res = list(APE_MLE = APE_MLE, APE = APE_analytical, se = se)
+  se =  sqrt( diag(compute_expression_array(tilde_APE_array, tau)) )/(N*(N-1))
+  res = list( APE = APE_analytical, se = se)
   #, test1 = test1, test2 = test2, test3 = test3, test4 = test4, test5 = test5, test6 = test6)
 
   return(res)
@@ -1040,83 +1110,60 @@ get_APE_analytical<- function(y, X, N, data, index, fit, L = 1, model = 'probit'
 #' @export
 get_APE_jackknife <- function(y, X, N, index, data, fit, L = 1, model = 'probit'){
   K = dim(X)[2]
-  APE_MLE = rep(0, K)
   APE_jack = rep(0, K)
   tilde_X_list <- vector("list", K)
   tilde_Psi_list <- vector("list", K)
-  APE_MLE_list <- vector("list", K)
-  d_APE_MLE_list <- vector("list", K)
+  APE_list <- vector("list", K)
+  d_APE_list <- vector("list", K)
   Psi_list = vector("list", K)
   W_hat <- matrix(0, nrow = K, ncol = K)
-  B_hat = matrix(0, nrow = K, ncol = 1)
-  D_hat = matrix(0, nrow = K, ncol = 1)
   X_start = X
   y_to = y
   for (k in 1:K) {
     X = X_start[,k]
     cof_estimate = fit$est_jackknife_all[,k]
-    cof_estimate_MLE = fit$est_MLE[k]
     eta = t(fit$eta)
-    eta_MLE = t(fit$eta_MLE)
     if (is.numeric(X) && length(unique(X)) == 2) {
       X_max = as.numeric(max(unique(X)))
       X_min = as.numeric(min(unique(X)))
       APE_estimate = matrix(0,N-1,N*(N-1))
       d_APE_estimate = matrix(0,N-1,N*(N-1))
       dd_APE_estimate = matrix(0,N-1,N*(N-1))
-      for (i in 1:N-1) {
-        APE_estimate[i,] = (pnorm(cof_estimate[i]* X_max + eta[,i] - cof_estimate[i] * X ) - pnorm(cof_estimate[i]* X_min + eta[,i] - cof_estimate[i] * X)) / (X_max - X_min)
-        d_APE_estimate[i,] = (dnorm(cof_estimate[i]* X_max + eta[,i] - cof_estimate[i] * X ) - dnorm(cof_estimate[i]* X_min + eta[,i] - cof_estimate[i] * X)) / (X_max - X_min)
-        dd_APE_estimate[i,] = (-(cof_estimate[i]* X_max + eta[,i] - cof_estimate[i] * X) * dnorm(cof_estimate[i]* X_max + eta[,i] - cof_estimate[i] * X) + (cof_estimate[i]* X_min + eta[,i] - cof_estimate[i] * X)  * dnorm(cof_estimate[i]* X_min + eta[,i] - cof_estimate[i] * X))/ (X_max - X_min)
-      }
-      APE_estimate_MLE = (pnorm(cof_estimate_MLE * X_max + eta_MLE - cof_estimate_MLE * X ) - pnorm(cof_estimate_MLE* X_min + eta_MLE - cof_estimate_MLE * X))/(X_max - X_min)
-      d_APE_estimate_MLE = (dnorm(cof_estimate_MLE * X_max + eta_MLE - cof_estimate_MLE * X ) - dnorm(cof_estimate_MLE* X_min +eta_MLE - cof_estimate_MLE * X) ) / (X_max - X_min)
-      dd_APE_estimate_MLE = (-(cof_estimate_MLE * X_max + eta_MLE - cof_estimate_MLE * X) * dnorm(cof_estimate_MLE* X_max + eta_MLE - cof_estimate_MLE * X ) + (cof_estimate_MLE* X_min + eta_MLE - cof_estimate_MLE * X)  * dnorm(cof_estimate_MLE* X_min + eta_MLE - cof_estimate_MLE * X)) / (X_max - X_min)
+      if (model == 'probit'){
+        for (i in 1:N-1) {
+          APE_estimate[i,] = (pnorm(cof_estimate[i]* X_max + eta[,i] - cof_estimate[i] * X ) - pnorm(cof_estimate[i]* X_min + eta[,i] - cof_estimate[i] * X))
+          d_APE_estimate[i,] = (dnorm(cof_estimate[i]* X_max + eta[,i] - cof_estimate[i] * X ) - dnorm(cof_estimate[i]* X_min + eta[,i] - cof_estimate[i] * X))
+          dd_APE_estimate[i,] = (-(cof_estimate[i]* X_max + eta[,i] - cof_estimate[i] * X) * dnorm(cof_estimate[i]* X_max + eta[,i] - cof_estimate[i] * X) + (cof_estimate[i]* X_min + eta[,i] - cof_estimate[i] * X)  * dnorm(cof_estimate[i]* X_min + eta[,i] - cof_estimate[i] * X))
+        }}else{
+          for (i in 1:N-1) {
+            APE_estimate[i,] = (plogis(cof_estimate[i]* X_max + eta[,i] - cof_estimate[i] * X ) - plogis(cof_estimate[i]* X_min + eta[,i] - cof_estimate[i] * X))
+            d_APE_estimate[i,] = (dlogis(cof_estimate[i]* X_max + eta[,i] - cof_estimate[i] * X ) - dlogis(cof_estimate[i]* X_min + eta[,i] - cof_estimate[i] * X))
+            dd_APE_estimate = (dlogis(cof_estimate[i]* X_max + eta[,i] - cof_estimate[i] * X ) * ( 1 - 2*plogis(cof_estimate[i] * X_max + eta[,i] - cof_estimate[i] * X ) )
+                               - dlogis(cof_estimate[i]* X_min + eta[,i] - cof_estimate[i] * X) * ( 1 - 2 * plogis(cof_estimate[i] * X_min + eta[,i] - cof_estimate[i] * X)))
+
+          }
+        }
 
     }else{
       APE_estimate = matrix(0,N-1,N*(N-1))
       d_APE_estimate = matrix(0,N-1,N*(N-1))
       dd_APE_estimate = matrix(0,N-1,N*(N-1))
-      for (i in 1:N-1) {
-        APE_estimate[i,] = cof_estimate[i] * dnorm(eta[,i])
-        d_APE_estimate[i,] = cof_estimate[i] * (-eta[,i]) * dnorm(eta[,i])
-        dd_APE_estimate[i,] = cof_estimate[i]*(- dnorm(eta[,i]) + eta[,i]^2 * dnorm(eta[,i]))
+      if (model == 'probit'){
+        for (i in 1:N-1) {
+          APE_estimate[i,] = cof_estimate[i] * dnorm(eta[,i])
+          d_APE_estimate[i,] = cof_estimate[i] * (-eta[,i]) * dnorm(eta[,i])
+          dd_APE_estimate[i,] = cof_estimate[i]*(- dnorm(eta[,i]) + eta[,i]^2 * dnorm(eta[,i]))
+        }
+      }else{
+        for (i in 1:N-1) {
+          APE_estimate[i,] = cof_estimate[i] * dlogis(eta)
+          d_APE_estimate[i,] = cof_estimate[i] * (1 - 2 * plogis(eta[,i])) * dlogis(eta[,i])
+          dd_APE_estimate[i,] = cof_estimate[i] * (- 2 * dlogis(eta[,i])) * dlogis(eta[,i]) + cof_estimate[i] * (1 - 2 * plogis(eta[,i])) * dlogis(eta[,i]) * (1-2*plogis(eta[,i]))
+        }
       }
-      APE_estimate_MLE = cof_estimate_MLE * dnorm(eta_MLE)
-      d_APE_estimate_MLE = cof_estimate_MLE * (-eta_MLE) * dnorm(eta_MLE)
-      dd_APE_estimate_MLE = cof_estimate_MLE * (- dnorm(eta_MLE) + eta_MLE^2 * dnorm(eta_MLE))
     }
 
-    APE_jack[k] = (N-1)*mean(APE_estimate_MLE) - (N-2)* mean( apply(APE_estimate,1,mean) )
-    APE_MLE[k] =  mean(APE_estimate_MLE)
-  }
-
-
-  # calculate se
-  APE_MLE = rep(0, K)
-  tilde_X_list <- vector("list", K)
-  tilde_Psi_list <- vector("list", K)
-  APE_MLE_list <- vector("list", K)
-  d_APE_MLE_list <- vector("list", K)
-  Psi_list = vector("list", K)
-  W_hat <- matrix(0, nrow = K, ncol = K)
-  for (k in 1:K) {
-    X = X_start[,k]
-    cof_estimate_MLE = fit$est_MLE[k]
-    eta_MLE = t(fit$eta_MLE)
-    if (is.numeric(X) && length(unique(X)) == 2) {
-      X_max = as.numeric(max(unique(X)))
-      X_min = as.numeric(min(unique(X)))
-      APE_estimate_MLE = (pnorm(cof_estimate_MLE * X_max + eta_MLE - cof_estimate_MLE * X ) - pnorm(cof_estimate_MLE* X_min + eta_MLE - cof_estimate_MLE * X)) / (X_max - X_min)
-      d_APE_estimate_MLE = (dnorm(cof_estimate_MLE * X_max + eta_MLE - cof_estimate_MLE * X ) - dnorm(cof_estimate_MLE* X_min +eta_MLE - cof_estimate_MLE * X) ) / (X_max - X_min)
-      dd_APE_estimate_MLE = (-(cof_estimate_MLE * X_max + eta_MLE - cof_estimate_MLE * X) * dnorm(cof_estimate_MLE* X_max + eta_MLE - cof_estimate_MLE * X ) + (cof_estimate_MLE* X_min + eta_MLE - cof_estimate_MLE * X)  * dnorm(cof_estimate_MLE* X_min + eta_MLE - cof_estimate_MLE * X)) / (X_max - X_min)
-
-    }else{
-
-      APE_estimate_MLE = cof_estimate_MLE * dnorm(eta_MLE)
-      d_APE_estimate_MLE = cof_estimate_MLE * (-eta_MLE) * dnorm(eta_MLE)
-      dd_APE_estimate_MLE = cof_estimate_MLE * (- dnorm(eta_MLE) + eta_MLE^2 * dnorm(eta_MLE))
-    }
+    APE_jack[k] = (N-1)*mean(APE_estimate) - (N-2)* mean( apply(APE_estimate,1,mean) )
 
 
     index1 = data[,index[1]]
@@ -1132,33 +1179,44 @@ get_APE_jackknife <- function(y, X, N, index, data, fit, L = 1, model = 'probit'
     APE_estimate = vector_to_matrix( APE_estimate, N, ind1 = data[,index[1]], ind2 = data[,index[2]])
     d_APE_estimate = vector_to_matrix( d_APE_estimate, N, ind1 = data[,index[1]], ind2 = data[,index[2]])
     dd_APE_estimate = vector_to_matrix( dd_APE_estimate, N, ind1 = data[,index[1]], ind2 = data[,index[2]])
-    APE_estimate_MLE = vector_to_matrix( APE_estimate_MLE, N, ind1 = data[,index[1]], ind2 = data[,index[2]])
-    d_APE_estimate_MLE = vector_to_matrix( d_APE_estimate_MLE, N, ind1 = data[,index[1]], ind2 = data[,index[2]])
-    dd_APE_estimate_MLE = vector_to_matrix( dd_APE_estimate_MLE, N, ind1 = data[,index[1]], ind2 = data[,index[2]])
 
-    APE_MLE_list[[k]] =  APE_estimate_MLE
-    d_APE_MLE_list[[k]] =  d_APE_estimate_MLE
+    APE_list[[k]] =  APE_estimate
+    d_APE_list[[k]] =  d_APE_estimate
 
-    cov_sum = vector_to_matrix( t(eta_MLE), N, ind1 = data[,index[1]], ind2 = data[,index[2]])
-    Phi_XB <- pnorm(cov_sum)  # CDF (Φ(Xβ))
-    phi_XB <- dnorm(cov_sum)  # PDF (φ(Xβ))
-    Phi_XB <- pmax(Phi_XB, 1e-9)
-    Phi_XB <- pmin(Phi_XB, 1 - 1e-9)
+    cov_sum = vector_to_matrix( t(fit$eta_jack), N, ind1 = data[,index[1]], ind2 = data[,index[2]])
+    if (model == 'probit'){
+      Phi_XB <- pnorm(cov_sum)  # CDF (Φ(Xβ))
+      phi_XB <- dnorm(cov_sum)  # PDF (φ(Xβ))
+      Phi_XB <- pmax(Phi_XB, 1e-9)
+      Phi_XB <- pmin(Phi_XB, 1 - 1e-9)
 
-    dd_F_fix = -cov_sum * phi_XB
-    ddd_F_fix = cov_sum^2 * phi_XB - phi_XB
+      dd_F_fix = -cov_sum * phi_XB
 
-    #### Another way to calculate the bias corrected
-    # another way to calculate the analytical corrected estimate
-    H = phi_XB/(Phi_XB*(1-Phi_XB))
-    small_w = H * phi_XB
+      H = phi_XB/(Phi_XB*(1-Phi_XB))
+      small_w = H * phi_XB
+    }else{
+
+      Phi_XB <- plogis(cov_sum)  # CDF (Φ(Xβ))
+      phi_XB <- dlogis(cov_sum)  # PDF (φ(Xβ))
+      dd_F_fix = phi_XB * ( 1 - 2 * Phi_XB)
+      Phi_XB[row(Phi_XB) == col(Phi_XB)] = 0
+      phi_XB[row(phi_XB) == col(phi_XB)] = 0
+      Phi_XB <- pmax(Phi_XB, 1e-9)
+      Phi_XB <- pmin(Phi_XB, 1 - 1e-9)
+
+      #### Another way to calculate the bias corrected
+      # another way to calculate the analytical corrected estimate
+      H = matrix(1, N, N)
+      diag(H) = 0
+      small_w = phi_XB
+    }
 
     # B_hat
-    X_into = matrix_to_panel_df(-d_APE_estimate_MLE/small_w)
+    X_into = matrix_to_panel_df(-d_APE_estimate/small_w)
     weight = matrix_to_panel_df(small_w)$X
     Psi = get_weighted_projection_fitted_exclude_t_eq_i(X_into$X, weight, X_into$id, X_into$time)
     Psi_list[[k]]= vector_to_matrix(Psi, N, ind1 = X_into$id, ind2 = X_into$time)
-    tilde_Psi_list[[k]] = -d_APE_estimate_MLE/small_w - Psi_list[[k]]
+    tilde_Psi_list[[k]] = -d_APE_estimate/small_w - Psi_list[[k]]
     diag(tilde_Psi_list[[k]]) = 0
 
     # residual X
@@ -1173,20 +1231,21 @@ get_APE_jackknife <- function(y, X, N, index, data, fit, L = 1, model = 'probit'
   tilde_X_array <- array(unlist(tilde_X_list), dim = c(N, N, K))
   Psi_array <- array(unlist(Psi_list), dim = c(N, N, K))
   tilde_Psi_array <- array(unlist(tilde_Psi_list), dim = c(N, N, K))
-  APE_MLE_array <- array(unlist(APE_MLE_list), dim = c(N, N, K))
-  d_APE_MLE_array <- array(unlist(d_APE_MLE_list), dim = c(N, N, K))
+  APE_array <- array(unlist(APE_list), dim = c(N, N, K))
+  d_APE_array <- array(unlist(d_APE_list), dim = c(N, N, K))
 
   # Step 4: Initialize sum matrix for outer products
   W_hat <- matrix(0, nrow = K, ncol = K)
   D_beta_APE <- 0
   tau = array(0, dim = c(N, N, K))
+
   # Step 5: For each position (i, j), extract vector and compute outer product
   for (i in 1:N) {
     for (j in 1:N) {
       if(j!=i){
         v_ij <- tilde_X_array[i, j, ]             # Vector of length p
         W_hat <- W_hat + (1 / ((N-1)*N)) * small_w[i,j] * v_ij %*% t(v_ij)  # Outer product and sum
-        D_beta_APE =  D_beta_APE +  (1 / ((N-1)*N)) * d_APE_MLE_array[i,j, ] * v_ij
+        D_beta_APE =  D_beta_APE +  (1 / ((N-1)*N)) * d_APE_array[i,j, ] * v_ij
       }
     }
   }
@@ -1199,16 +1258,159 @@ get_APE_jackknife <- function(y, X, N, index, data, fit, L = 1, model = 'probit'
     }
   }
 
-  tilde_APE_MLE_array = array(0, dim = c(N, N, K))
+  tilde_APE_array = array(0, dim = c(N, N, K))
+
+  se = sqrt( diag(compute_expression_array(tilde_APE_array, tau)) )/(N*(N-1))
+
+  res = list(APE = APE_jack, se = se)
+
+  return(res)
+
+}
+
+
+#' @export
+get_APE_MLE <- function(y, X, N, index, data, fit,  model = 'probit'){
+  K = dim(X)[2]
+  APE = rep(0, K)
+  tilde_X_list <- vector("list", K)
+  tilde_Psi_list <- vector("list", K)
+  APE_list <- vector("list", K)
+  d_APE_list <- vector("list", K)
+  Psi_list = vector("list", K)
+  W_hat <- matrix(0, nrow = K, ncol = K)
+  X_start = X
+  y_to = y
   for (k in 1:K) {
-    tilde_APE_MLE_array[,,k] <-  sweep(APE_MLE_array[,,k], 2, colMeans(APE_MLE_array[,,k]),  FUN = "-")
-    diag(tilde_APE_MLE_array[,,k]) = 0
-    APE_MLE[k] = sum(APE_MLE_array[,,k])/(N*(N-1))
+    X = X_start[,k]
+    cof_estimate = fit$est_MLE[k]
+    eta = t(fit$eta_MLE)
+    if (is.numeric(X) && length(unique(X)) == 2) {
+      X_max = as.numeric(max(unique(X)))
+      X_min = as.numeric(min(unique(X)))
+      if (model == 'probit'){
+        APE_estimate = (pnorm(cof_estimate * X_max + eta - cof_estimate * X ) - pnorm(cof_estimate* X_min + eta - cof_estimate * X))
+        d_APE_estimate = (dnorm(cof_estimate * X_max + eta - cof_estimate * X ) - dnorm(cof_estimate* X_min +eta - cof_estimate * X) )
+        dd_APE_estimate = (-(cof_estimate * X_max + eta - cof_estimate * X) * dnorm(cof_estimate* X_max + eta - cof_estimate * X ) + (cof_estimate* X_min + eta - cof_estimate * X)  * dnorm(cof_estimate* X_min + eta - cof_estimate * X))
+      }else{
+        APE_estimate = (plogis(cof_estimate * X_max + eta - cof_estimate * X ) - plogis(cof_estimate* X_min + eta - cof_estimate * X))
+        d_APE_estimate = (dlogis(cof_estimate * X_max + eta - cof_estimate * X ) - dlogis(cof_estimate* X_min +eta - cof_estimate * X) )
+        dd_APE_estimate = (dlogis(cof_estimate* X_max + eta - cof_estimate * X ) * ( 1 - 2*plogis(cof_estimate* X_max + eta - cof_estimate * X ) )
+                           - dlogis(cof_estimate* X_min + eta - cof_estimate * X) * ( 1 - 2 * plogis(cof_estimate* X_min + eta - cof_estimate * X)))
+
+      }
+    }else{
+      if (model == 'probit'){
+        APE_estimate = cof_estimate * dnorm(eta)
+        d_APE_estimate = cof_estimate * (-eta) * dnorm(eta)
+        dd_APE_estimate = cof_estimate * (- dnorm(eta) + eta^2 * dnorm(eta))
+      }else{
+        APE_estimate = cof_estimate * dlogis(eta)
+        d_APE_estimate = cof_estimate * (1 - 2 * plogis(eta)) * dlogis(eta)
+        dd_APE_estimate = cof_estimate* ( - 2 * dlogis(eta)) * dlogis(eta) + cof_estimate * (1 - 2 * plogis(eta)) * dlogis(eta) * (1-2*plogis(eta))
+      }
+    }
+
+
+    APE[k] =  mean(APE_estimate)
+
+    index1 = data[,index[1]]
+    index2 = data[,index[2]]
+    new_index1 <- match(index1, sort(unique(index1)))
+    new_index2 <- match(index2, sort(unique(index2)))
+
+    data[,index[1]] =  new_index1
+    data[,index[2]] =  new_index2
+
+    X = vector_to_matrix(X, N, ind1 = data[,index[1]], ind2 = data[,index[2]])
+    y = vector_to_matrix(y_to, N, ind1 = data[,index[1]], ind2 = data[,index[2]])
+    APE_estimate = vector_to_matrix( APE_estimate, N, ind1 = data[,index[1]], ind2 = data[,index[2]])
+    d_APE_estimate = vector_to_matrix( d_APE_estimate, N, ind1 = data[,index[1]], ind2 = data[,index[2]])
+    dd_APE_estimate = vector_to_matrix( dd_APE_estimate, N, ind1 = data[,index[1]], ind2 = data[,index[2]])
+
+    APE_list[[k]] =  APE_estimate
+    d_APE_list[[k]] =  d_APE_estimate
+
+    cov_sum = vector_to_matrix( t(eta), N, ind1 = data[,index[1]], ind2 = data[,index[2]])
+
+    if (model == 'probit'){
+      Phi_XB <- pnorm(cov_sum)  # CDF (Φ(Xβ))
+      phi_XB <- dnorm(cov_sum)  # PDF (φ(Xβ))
+      Phi_XB <- pmax(Phi_XB, 1e-9)
+      Phi_XB <- pmin(Phi_XB, 1 - 1e-9)
+
+      dd_F_fix = -cov_sum * phi_XB
+
+      H = phi_XB/(Phi_XB*(1-Phi_XB))
+      small_w = H * phi_XB
+    }else{
+
+      Phi_XB <- plogis(cov_sum)  # CDF (Φ(Xβ))
+      phi_XB <- dlogis(cov_sum)  # PDF (φ(Xβ))
+      dd_F_fix = phi_XB * ( 1 - 2 * Phi_XB)
+      Phi_XB[row(Phi_XB) == col(Phi_XB)] = 0
+      phi_XB[row(phi_XB) == col(phi_XB)] = 0
+      Phi_XB <- pmax(Phi_XB, 1e-9)
+      Phi_XB <- pmin(Phi_XB, 1 - 1e-9)
+
+      #### Another way to calculate the bias corrected
+      # another way to calculate the analytical corrected estimate
+      H = matrix(1, N, N)
+      diag(H) = 0
+      small_w = phi_XB
+    }
+
+    # B_hat
+    X_into = matrix_to_panel_df(-d_APE_estimate/small_w)
+    weight = matrix_to_panel_df(small_w)$X
+    Psi = get_weighted_projection_fitted_exclude_t_eq_i(X_into$X, weight, X_into$id, X_into$time)
+    Psi_list[[k]]= vector_to_matrix(Psi, N, ind1 = X_into$id, ind2 = X_into$time)
+    tilde_Psi_list[[k]] = -d_APE_estimate/small_w - Psi_list[[k]]
+    diag(tilde_Psi_list[[k]]) = 0
+
+    # residual X
+    X_into = matrix_to_panel_df(X)
+    weight = matrix_to_panel_df(small_w)$X
+    re = get_weighted_projection_fitted_exclude_t_eq_i(X_into$X, weight, X_into$id, X_into$time)
+    re_matrix = vector_to_matrix(re, N, ind1 = X_into$id, ind2 = X_into$time)
+    tilde_X_list[[k]] = X - re_matrix
+
   }
 
-  se = sqrt( diag(compute_expression_array(tilde_APE_MLE_array, tau)) )/(N*(N-1))
+  tilde_X_array <- array(unlist(tilde_X_list), dim = c(N, N, K))
+  Psi_array <- array(unlist(Psi_list), dim = c(N, N, K))
+  tilde_Psi_array <- array(unlist(tilde_Psi_list), dim = c(N, N, K))
+  APE_array <- array(unlist(APE_list), dim = c(N, N, K))
+  d_APE_array <- array(unlist(d_APE_list), dim = c(N, N, K))
 
-  res = list(APE_MLE = APE_MLE, APE = APE_jack, se = se)
+  # Step 4: Initialize sum matrix for outer products
+  W_hat <- matrix(0, nrow = K, ncol = K)
+  D_beta_APE <- 0
+  tau = array(0, dim = c(N, N, K))
+  # Step 5: For each position (i, j), extract vector and compute outer product
+  for (i in 1:N) {
+    for (j in 1:N) {
+      if(j!=i){
+        v_ij <- tilde_X_array[i, j, ]             # Vector of length p
+        W_hat <- W_hat + (1 / ((N-1)*N)) * small_w[i,j] * v_ij %*% t(v_ij)  # Outer product and sum
+        D_beta_APE =  D_beta_APE +  (1 / ((N-1)*N)) * d_APE_array[i,j, ] * v_ij
+      }
+    }
+  }
+
+  for (i in 1:N) {
+    for (j in 1:N) {
+      if(j!=i){
+        tau[i,j,] = as.matrix(t(D_beta_APE) %*% solve(W_hat)) * as.matrix(t(H[i,j] * (y[i,j] - Phi_XB[i,j]) * tilde_X_array[i,j,])) - Psi_array[i,j,] * H[i,j] * (y[i,j] - Phi_XB[i,j])
+      }
+    }
+  }
+
+  tilde_APE_array = array(0, dim = c(N, N, K))
+
+  se = sqrt( diag(compute_expression_array(tilde_APE_array, tau)) )/(N*(N-1))
+
+  res = list(APE = APE, se = se)
 
   return(res)
 

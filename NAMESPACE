@@ -2,6 +2,7 @@
 
 export(analytical_Amrei)
 export(analytical_corrected)
+export(get_APE_MLE)
 export(get_APE_analytical)
 export(get_APE_bootstrap)
 export(get_APE_jackknife)
