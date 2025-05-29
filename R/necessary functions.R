@@ -367,3 +367,8 @@ compute_TN <- function(Y, p) {
 
   return(TN)
 }
+
+get_mode <- function(v) {
+  uniq_vals <- unique(v)
+  uniq_vals[which.max(tabulate(match(v, uniq_vals)))]
+}

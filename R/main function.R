@@ -16,6 +16,7 @@
 #' Within this outputted list, the following elements can be found:
 #'     \item{cof_mean}{estimated coefficients corrected by the mean of the bootstrap estimates.}
 #'     \item{cof_median}{estimated coefficients corrected by the median of the bootstrap estimates.}
+#'     \item{cof_mode}{estimated coefficients corrected by the statistic mode of the bootstrap estimates.}
 #'     \item{sd}{stand deviation form the bootstrap procedure.}
 #'     \item{cof_MLE}{estimated coefficients from Maximum Likelihood Estimates (MLE).}
 #'     \item{cof_bootstrap_all}{all bootstrap estimates.}
@@ -253,11 +254,13 @@ network_bootstrap = function(y, X, N, bootstrap_time, index, data, link = 'probi
 
   cof_boost_mean = apply(cof_B, 2, mean)
   cof_boost_median = apply(cof_B, 2, median)
+  cof_boost_mode = apply(cof_B, 2, get_mode)
   est_correct_mean = cof - (cof_boost_mean - cof)
   est_correct_median = cof - (cof_boost_median - cof)
+  est_correct_mode = cof - (cof_boost_mode - cof)
   est_correct_mean[K+1] = sum(est_correct_mean[(N+K+1):(N+N+K)]) - sum(est_correct_mean[(K+2):(N+K)])
   est_correct_median[K+1] = sum(est_correct_median[(N+K+1):(N+N+K)]) - sum(est_correct_median[(K+2):(N+K)])
-
+  est_correct_mode[K+1] = sum(est_correct_mode[(N+K+1):(N+N+K)]) - sum(est_correct_mode[(K+2):(N+K)])
   # calculate the eta = xbeta + alpda_i + gamma_j
   alpha <- est_correct_mean[(K + 1):(K + N)]
   gamma <- est_correct_mean[(K + N + 1):(K + N + N)]
@@ -291,7 +294,8 @@ network_bootstrap = function(y, X, N, bootstrap_time, index, data, link = 'probi
 
 
   if(is.null(beta_NULL) != 1){
-    res = list(est_MLE = cof, est_mean = est_correct_mean, est_median = est_correct_median, sd = boostrap_sd,
+    res = list(est_MLE = cof, est_mean = est_correct_mean, est_median = est_correct_median, est_mode = est_correct_mode,
+               sd = boostrap_sd,
                est_bootstrap_all = cof_B, cof_MLE_NULL = cof_NULL, cof_bootstrap_NULL = cof_B_NULL,
                APE_MLE_estimate = APE_MLE_estimate, APE_MLE_se = APE_MLE_se,
                log_likelihood_MLE = log_likelihood_estimate, log_likelihood_Bootstrap = log_likelihood_estimate_B,
@@ -300,7 +304,7 @@ network_bootstrap = function(y, X, N, bootstrap_time, index, data, link = 'probi
     )
   }
   else{
-    res = list(est_MLE = cof, est_mean = est_correct_mean, est_median = est_correct_median, sd = boostrap_sd, est_bootstrap_all = cof_B,
+    res = list(est_MLE = cof, est_mean = est_correct_mean, est_median = est_correct_median, est_mode = est_correct_mode, sd = boostrap_sd, est_bootstrap_all = cof_B,
                APE_MLE_estimate = APE_MLE_estimate, APE_MLE_se = APE_MLE_se,
                log_likelihood_MLE = log_likelihood_estimate, log_likelihood_Bootstrap = log_likelihood_estimate_B,
                Hessian_MLE = Hessian_inv, X_origin = as.matrix(X_design), eta = eta, eta_MLE = eta_MLE, eta_mean = eta_mean, eta_median = eta_median, data = data
@@ -765,6 +769,7 @@ analytical_corrected = function(y, X, N, index, data, link = 'probit', L = 1, be
     re = get_weighted_fe_projection(X = X_into$X, weight = weight, id = X_into$id, time = X_into$time)
     re_matrix = vector_to_matrix(re, N, ind1 = X_into$id, ind2 = X_into$time)
     tilde_X_list[[index_covariate]] = X - re_matrix
+    diag(tilde_X_list[[index_covariate]]) = 0
     D_hat[index_covariate,] = -(0.5 / (N-1)) * sum(colSums((H * dd_F_fix * tilde_X_list[[index_covariate]]) * (1 - diag(N))) / colSums(small_w * (1 - diag(N))))
     B_hat[index_covariate,] = -(0.5/N) * compute_B_hat(2* H * (y - Phi_XB), small_w * tilde_X_list[[index_covariate]], H * dd_F_fix * tilde_X_list[[index_covariate]], small_w, L)
   }
@@ -865,6 +870,7 @@ analytical_corrected = function(y, X, N, index, data, link = 'probit', L = 1, be
     re = get_weighted_fe_projection(X = X_into$X, weight = weight, id = X_into$id, time = X_into$time)
     re_matrix = vector_to_matrix(re, N, ind1 = X_into$id, ind2 = X_into$time)
     tilde_X_list[[index_covariate]] = X - re_matrix
+    diag(tilde_X_list[[index_covariate]]) = 0
     D_hat[index_covariate,] = -(0.5 / (N-1)) * sum(colSums((H * dd_F_fix * tilde_X_list[[index_covariate]]) * (1 - diag(N))) / colSums(small_w * (1 - diag(N))))
     B_hat[index_covariate,] = -(0.5/N) * compute_B_hat(2* H * (y - Phi_XB), small_w * tilde_X_list[[index_covariate]], H * dd_F_fix * tilde_X_list[[index_covariate]], small_w, L)
   }
