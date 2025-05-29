@@ -205,6 +205,7 @@ matrix_to_panel_df <- function(X_mat) {
   return(df)
 }
 
+
 compute_B_hat <- function(D, E, B, C, L) {
   N <- nrow(D)
   result <- 0
@@ -212,8 +213,8 @@ compute_B_hat <- function(D, E, B, C, L) {
     sum_l_term <- 0
     for (l in 1:L) {
       coeff <- N / (N - l)
-      E_trans <- E[i, ][E[i, ] != 0]
-      D_trans <- D[i, ][D[i, ] != 0]
+      E_trans <- E[i, -i]
+      D_trans <- D[i, -i]
       for (j in (l + 1):(N-1)) {
         d_index <- j - l
         #print(c(j, d_index, E_trans[ j], D_trans[d_index] ))
@@ -226,7 +227,6 @@ compute_B_hat <- function(D, E, B, C, L) {
 
     sum_B <- sum(B[i, -i])       # exclude j == i
     sum_C <- sum(C[i, -i])       # exclude j == i
-
     result <- result + (sum_l_term + sum_B) / sum_C
   }
 

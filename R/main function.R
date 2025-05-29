@@ -761,8 +761,8 @@ analytical_corrected = function(y, X, N, index, data, link = 'probit', L = 1, be
     # W_hat
     X_into = matrix_to_panel_df(X)
     weight = matrix_to_panel_df(small_w)$X
-    re = get_weighted_projection_fitted_exclude_t_eq_i(X_into$X, weight, X_into$id, X_into$time)
-    # re = get_weighted_fe_projection(X = X_into$X, weight = weight, id = X_into$id, time = X_into$time)
+    # re = get_weighted_projection_fitted_exclude_t_eq_i(X_into$X, weight, X_into$id, X_into$time)
+    re = get_weighted_fe_projection(X = X_into$X, weight = weight, id = X_into$id, time = X_into$time)
     re_matrix = vector_to_matrix(re, N, ind1 = X_into$id, ind2 = X_into$time)
     tilde_X_list[[index_covariate]] = X - re_matrix
     D_hat[index_covariate,] = -(0.5 / (N-1)) * sum(colSums((H * dd_F_fix * tilde_X_list[[index_covariate]]) * (1 - diag(N))) / colSums(small_w * (1 - diag(N))))
@@ -861,8 +861,8 @@ analytical_corrected = function(y, X, N, index, data, link = 'probit', L = 1, be
     # W_hat
     X_into = matrix_to_panel_df(X)
     weight = matrix_to_panel_df(small_w)$X
-    re = get_weighted_projection_fitted_exclude_t_eq_i(X_into$X, weight, X_into$id, X_into$time)
-    # re = get_weighted_fe_projection(X = X_into$X, weight = weight, id = X_into$id, time = X_into$time)
+    # re = get_weighted_projection_fitted_exclude_t_eq_i(X_into$X, weight, X_into$id, X_into$time)
+    re = get_weighted_fe_projection(X = X_into$X, weight = weight, id = X_into$id, time = X_into$time)
     re_matrix = vector_to_matrix(re, N, ind1 = X_into$id, ind2 = X_into$time)
     tilde_X_list[[index_covariate]] = X - re_matrix
     D_hat[index_covariate,] = -(0.5 / (N-1)) * sum(colSums((H * dd_F_fix * tilde_X_list[[index_covariate]]) * (1 - diag(N))) / colSums(small_w * (1 - diag(N))))
