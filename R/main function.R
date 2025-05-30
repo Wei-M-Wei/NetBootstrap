@@ -259,7 +259,7 @@ network_bootstrap = function(y, X, N, bootstrap_time, index, data, link = 'probi
   est_correct_mean[K+1] = sum(est_correct_mean[(N+K+1):(N+N+K)]) - sum(est_correct_mean[(K+2):(N+K)])
   est_correct_median[K+1] = sum(est_correct_median[(N+K+1):(N+N+K)]) - sum(est_correct_median[(K+2):(N+K)])
   est_correct_mode[K+1] = sum(est_correct_mode[(N+K+1):(N+N+K)]) - sum(est_correct_mode[(K+2):(N+K)])
-
+  est_critical = est_correct_median
 
 
   # calculate the eta = xbeta + alpda_i + gamma_j
@@ -343,6 +343,7 @@ network_bootstrap = function(y, X, N, bootstrap_time, index, data, link = 'probi
       cof_boost_mean = apply(cof_B, 2, mean)
       cof_boost_median = apply(cof_B, 2, median)
       cof_boost_mode = apply(cof_B, 2, get_mode)
+      est_critical = est_correct_median
       est_correct_mean = cof - (cof_boost_mean - est_correct_median)
       est_correct_median = cof - (cof_boost_median - est_correct_median)
       est_correct_mode = cof - (cof_boost_mode - est_correct_mode)
@@ -387,7 +388,7 @@ network_bootstrap = function(y, X, N, bootstrap_time, index, data, link = 'probi
 
   if(is.null(beta_NULL) != 1){
     res = list(est_MLE = cof, est_mean = est_correct_mean, est_median = est_correct_median, est_mode = est_correct_mode,
-               sd = boostrap_sd,
+               sd = boostrap_sd, est_critical = est_critical,
                est_bootstrap_all = cof_B, cof_MLE_NULL = cof_NULL, cof_bootstrap_NULL = cof_B_NULL,
                APE_MLE_estimate = APE_MLE_estimate, APE_MLE_se = APE_MLE_se,
                log_likelihood_MLE = log_likelihood_estimate, log_likelihood_Bootstrap = log_likelihood_estimate_B,
@@ -397,7 +398,7 @@ network_bootstrap = function(y, X, N, bootstrap_time, index, data, link = 'probi
   }
   else{
     res = list(est_MLE = cof, est_mean = est_correct_mean, est_median = est_correct_median, est_mode = est_correct_mode, sd = boostrap_sd, est_bootstrap_all = cof_B,
-               APE_MLE_estimate = APE_MLE_estimate, APE_MLE_se = APE_MLE_se,
+               APE_MLE_estimate = APE_MLE_estimate, APE_MLE_se = APE_MLE_se, est_critical = est_critical,
                log_likelihood_MLE = log_likelihood_estimate, log_likelihood_Bootstrap = log_likelihood_estimate_B,
                Hessian_MLE = Hessian_inv, X_origin = as.matrix(X_design), eta = eta, eta_MLE = eta_MLE, eta_mean = eta_mean, eta_median = eta_median, data = data
     )
