@@ -168,8 +168,10 @@ network_bootstrap = function(y, X, N, bootstrap_time, index, data, link = 'probi
   APE_MLE = compute_ape_se(model, variables = all.vars(formula(model))[2], K, beta_hat = cof)
   APE_MLE_estimate = APE_MLE$APE
   APE_MLE_se = APE_MLE$SE
+
   # constrained MLE
   data_2 = data_in
+
   if(is.null(beta_NULL) != 1){
 
     formula <- as.formula( paste("y ~ -1 +", paste(colnames(data_2[,-2])[-1], collapse = " + "), "+ offset(offset_term)"))
@@ -191,15 +193,17 @@ network_bootstrap = function(y, X, N, bootstrap_time, index, data, link = 'probi
   X_design = apply(X_design, 2, as.numeric)
 
   # calculate the eta = xbeta + alpda_i + gamma_j
-  X_to = X
+  X_to = as.matrix(X)
   alpha <- cof[(K + 1):(K + N)]
   gamma <- cof[(K + N + 1):(K + N + N)]
+
   # Generate implied id and time indices
   id_idx <- rep(1:N, each = N)     # id changes slowly
   time_idx <- rep(1:N, times = N)  # time changes quickly
   keep <- id_idx != time_idx
   alpha_sub <- alpha[time_idx[keep]]
   gamma_sub <- gamma[id_idx[keep]]
+
   # Reconstruct eta = Xβ + α_i + γ_t
   eta_MLE = cof[1:K] %*% t( X_to ) + (alpha_sub + gamma_sub)
 
@@ -235,7 +239,6 @@ network_bootstrap = function(y, X, N, bootstrap_time, index, data, link = 'probi
   # get the final results
   cof_B[,K+1] = apply(cof_B[,(N+K+1):(N+N+K)],1,sum) - apply(cof_B[,(K+2):(N+K)],1,sum)
 
-
   # calculate the eta = xbeta + alpda_i + gamma_j
   alpha <- cof_B[,(K + 1):(K + N)]
   gamma <- cof_B[,(K + N + 1):(K + N + N)]
@@ -245,10 +248,9 @@ network_bootstrap = function(y, X, N, bootstrap_time, index, data, link = 'probi
   keep <- id_idx != time_idx
   alpha_sub <- alpha[,time_idx[keep]]
   gamma_sub <- gamma[,id_idx[keep]]
+
   # Reconstruct eta = Xβ + α_i + γ_t
   eta = cof_B[,1:K] %*% t( X_to ) + (alpha_sub + gamma_sub)
-
-
 
   cof_boost_mean = apply(cof_B, 2, mean)
   cof_boost_median = apply(cof_B, 2, median)
@@ -261,16 +263,45 @@ network_bootstrap = function(y, X, N, bootstrap_time, index, data, link = 'probi
   est_correct_mode[K+1] = sum(est_correct_mode[(N+K+1):(N+N+K)]) - sum(est_correct_mode[(K+2):(N+K)])
   est_critical = est_correct_median
 
+  # # estimate of fixed effects
+  # data_2 <- data_in
+  # formula <- as.formula( paste("y ~ -1 +", paste(colnames(data_2[,-seq(2,K+1,1)])[-1], collapse = " + "), "+ offset(offset_term)"))
+  # if( K != 1){
+  #   data_2$offset_term <- as.vector(X_to[,1:K] %*% as.matrix(est_correct_mean[1:K]))
+  # }else{
+  #   data_2$offset_term <- as.vector(est_correct_mean[1:K] %*% X_to[,1:K])
+  # }
+  # model_j_2 <-
+  #   glm(formula = formula, data = data_2, family=binomial(link = link))
+  # fit_j_2 = summary(model_j_2)
+  # est_correct_mean = c(est_correct_mean[1:K], unlist(coef(model_j_2)))
+  # est_correct_mean[K+1] = sum(est_correct_mean[(N+K+1):(N+N+K)]) - sum(est_correct_mean[(K+2):(N+K)])
+  #
+  # # estimate of fixed effects
+  # data_2 <- data_in
+  # formula <- as.formula( paste("y ~ -1 +", paste(colnames(data_2[,-seq(2,K+1,1)])[-1], collapse = " + "), "+ offset(offset_term)"))
+  # if( K != 1){
+  #   data_2$offset_term <- as.vector(X_to[,1:K] %*% matrix(est_correct_median[1:K]))
+  # }else{
+  #   data_2$offset_term <- as.vector(est_correct_median[1:K] %*% X_to[,1:K])
+  # }
+  # model_j_2 <-
+  #   glm(formula = formula, data = data_2, family=binomial(link = link))
+  # fit_j_2 = summary(model_j_2)
+  # est_correct_median = c(est_correct_median[1:K], unlist(coef(model_j_2)))
+  # est_correct_median[K+1] = sum(est_correct_median[(N+K+1):(N+N+K)]) - sum(est_correct_median[(K+2):(N+K)])
 
   # calculate the eta = xbeta + alpda_i + gamma_j
   alpha <- est_correct_mean[(K + 1):(K + N)]
   gamma <- est_correct_mean[(K + N + 1):(K + N + N)]
+
   # Generate implied id and time indices
-  id_idx <- rep(1:N, each = N)     # id changes slowly
+  id_idx <- rep(1:N, each = N)  # id changes slowly
   time_idx <- rep(1:N, times = N)  # time changes quickly
   keep <- id_idx != time_idx
   alpha_sub <- alpha[time_idx[keep]]
   gamma_sub <- gamma[id_idx[keep]]
+
   # Reconstruct eta = Xβ + α_i + γ_t
   eta_mean = est_correct_mean[1:K] %*% t( X_to ) + (alpha_sub + gamma_sub)
 
@@ -286,7 +317,8 @@ network_bootstrap = function(y, X, N, bootstrap_time, index, data, link = 'probi
   # Reconstruct eta = Xβ + α_i + γ_t
   eta_median = est_correct_median[1:K] %*% t( X_to ) + (alpha_sub + gamma_sub)
 
-  if (boot_repeat > 1){
+  if (boot_repeat >= 1){
+
     for (re in 1: boot_repeat){
       # prepare for bootstrap
       cof_B = NULL
@@ -326,7 +358,6 @@ network_bootstrap = function(y, X, N, bootstrap_time, index, data, link = 'probi
       # get the final results
       cof_B[,K+1] = apply(cof_B[,(N+K+1):(N+N+K)],1,sum) - apply(cof_B[,(K+2):(N+K)],1,sum)
 
-
       # calculate the eta = xbeta + alpda_i + gamma_j
       alpha <- cof_B[,(K + 1):(K + N)]
       gamma <- cof_B[,(K + N + 1):(K + N + N)]
@@ -338,7 +369,6 @@ network_bootstrap = function(y, X, N, bootstrap_time, index, data, link = 'probi
       gamma_sub <- gamma[,id_idx[keep]]
       # Reconstruct eta = Xβ + α_i + γ_t
       eta = cof_B[,1:K] %*% t( X_to ) + (alpha_sub + gamma_sub)
-
 
       cof_boost_mean = apply(cof_B, 2, mean)
       cof_boost_median = apply(cof_B, 2, median)
