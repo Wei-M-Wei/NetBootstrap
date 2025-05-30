@@ -383,16 +383,18 @@ network_bootstrap = function(y, X, N, bootstrap_time, index, data, link = 'probi
   }
 
   if (K == 1){
+    boostrap_sd_critical = sd(est_critical_all[,1:K])
     boostrap_sd = sd(cof_B[,1:K])
   }
   else{
+    boostrap_sd_critical = apply(est_critical_all[,1:K],2,sd)
     boostrap_sd = apply(cof_B[,1:K],2,sd)
   }
 
 
   if(is.null(beta_NULL) != 1){
     res = list(est_MLE = cof, est_mean = est_correct_mean, est_median = est_correct_median, est_mode = est_correct_mode,
-               sd = boostrap_sd, est_critical = est_critical,
+               sd = boostrap_sd, sd_critical = boostrap_sd_critical, est_critical = est_critical,
                est_bootstrap_all = cof_B, est_bootstrap_all_critical = est_critical_all, cof_MLE_NULL = cof_NULL, cof_bootstrap_NULL = cof_B_NULL,
                APE_MLE_estimate = APE_MLE_estimate, APE_MLE_se = APE_MLE_se,
                log_likelihood_MLE = log_likelihood_estimate, log_likelihood_Bootstrap = log_likelihood_estimate_B,
@@ -401,7 +403,8 @@ network_bootstrap = function(y, X, N, bootstrap_time, index, data, link = 'probi
     )
   }
   else{
-    res = list(est_MLE = cof, est_mean = est_correct_mean, est_median = est_correct_median, est_mode = est_correct_mode, sd = boostrap_sd, est_bootstrap_all = cof_B, est_bootstrap_all_critical = est_critical_all,
+    res = list(est_MLE = cof, est_mean = est_correct_mean, est_median = est_correct_median, est_mode = est_correct_mode, sd = boostrap_sd,
+               sd_critical = boostrap_sd_critical, est_bootstrap_all = cof_B, est_bootstrap_all_critical = est_critical_all,
                APE_MLE_estimate = APE_MLE_estimate, APE_MLE_se = APE_MLE_se, est_critical = est_critical,
                log_likelihood_MLE = log_likelihood_estimate, log_likelihood_Bootstrap = log_likelihood_estimate_B,
                Hessian_MLE = Hessian_inv, X_origin = as.matrix(X_design), eta = eta, eta_MLE = eta_MLE, eta_mean = eta_mean, eta_median = eta_median, data = data

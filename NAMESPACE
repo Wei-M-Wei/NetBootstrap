@@ -2,6 +2,8 @@
 
 export(analytical_Amrei)
 export(analytical_corrected)
+export(find_critical_low)
+export(find_critical_up)
 export(get_APE_MLE)
 export(get_APE_analytical)
 export(get_APE_bootstrap)

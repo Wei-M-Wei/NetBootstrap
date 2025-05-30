@@ -389,27 +389,39 @@ get_mode <- function(x, plot = FALSE) {
   return(mode_val)
 }
 
+#' @export
 # Given x, y, q (numeric vector), and desired alpha, find critical value of q
-find_critical <- function(Q_star, Q_star_star, q_hat, target_prob = 0.025) {
+find_critical_low <- function(Q_star, Q_star_star, q_hat, target_prob = 0.025) {
   f <- function(a) {
     q_quant <- quantile(Q_star_star, probs = a, type = 7)
     frac <- mean((Q_star - q_hat) <= q_quant)
     frac - target_prob
   }
 
+
+  root <- uniroot(f, lower = 0, upper = 1)
+  return(root$root)
+}
+
+#' @export
+find_critical_up <- function(Q_star, Q_star_star, q_hat, target_prob = 0.025) {
+  f <- function(a) {
+    q_quant <- quantile(Q_star_star, probs = a, type = 7)
+    frac <- mean((Q_star - q_hat) >= q_quant)
+    frac - target_prob
+  }
+
   f0 <- f(0)
   f1 <- f(1)
 
-  if (f0 > 0) {
-    warning("No root found: function above target at a=0, returning 0")
+  if (f0 < 0) {
+    warning("No root: function below target at a=0, returning 0")
     return(0)
-  } else if (f1 < 0) {
-    warning("No root found: function below target at a=1, returning 1")
+  } else if (f1 > 0) {
+    warning("No root: function above target at a=1, returning 1")
     return(1)
   } else {
     root <- uniroot(f, lower = 0, upper = 1)
     return(root$root)
   }
 }
-
-
