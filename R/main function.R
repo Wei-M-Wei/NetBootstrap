@@ -262,34 +262,7 @@ network_bootstrap = function(y, X, N, bootstrap_time, index, data, link = 'probi
   est_correct_median[K+1] = sum(est_correct_median[(N+K+1):(N+N+K)]) - sum(est_correct_median[(K+2):(N+K)])
   est_correct_mode[K+1] = sum(est_correct_mode[(N+K+1):(N+N+K)]) - sum(est_correct_mode[(K+2):(N+K)])
   est_critical = est_correct_median
-
-  # # estimate of fixed effects
-  # data_2 <- data_in
-  # formula <- as.formula( paste("y ~ -1 +", paste(colnames(data_2[,-seq(2,K+1,1)])[-1], collapse = " + "), "+ offset(offset_term)"))
-  # if( K != 1){
-  #   data_2$offset_term <- as.vector(X_to[,1:K] %*% as.matrix(est_correct_mean[1:K]))
-  # }else{
-  #   data_2$offset_term <- as.vector(est_correct_mean[1:K] %*% X_to[,1:K])
-  # }
-  # model_j_2 <-
-  #   glm(formula = formula, data = data_2, family=binomial(link = link))
-  # fit_j_2 = summary(model_j_2)
-  # est_correct_mean = c(est_correct_mean[1:K], unlist(coef(model_j_2)))
-  # est_correct_mean[K+1] = sum(est_correct_mean[(N+K+1):(N+N+K)]) - sum(est_correct_mean[(K+2):(N+K)])
-  #
-  # # estimate of fixed effects
-  # data_2 <- data_in
-  # formula <- as.formula( paste("y ~ -1 +", paste(colnames(data_2[,-seq(2,K+1,1)])[-1], collapse = " + "), "+ offset(offset_term)"))
-  # if( K != 1){
-  #   data_2$offset_term <- as.vector(X_to[,1:K] %*% matrix(est_correct_median[1:K]))
-  # }else{
-  #   data_2$offset_term <- as.vector(est_correct_median[1:K] %*% X_to[,1:K])
-  # }
-  # model_j_2 <-
-  #   glm(formula = formula, data = data_2, family=binomial(link = link))
-  # fit_j_2 = summary(model_j_2)
-  # est_correct_median = c(est_correct_median[1:K], unlist(coef(model_j_2)))
-  # est_correct_median[K+1] = sum(est_correct_median[(N+K+1):(N+N+K)]) - sum(est_correct_median[(K+2):(N+K)])
+  est_critical_all = cof_B
 
   # calculate the eta = xbeta + alpda_i + gamma_j
   alpha <- est_correct_mean[(K + 1):(K + N)]
@@ -320,6 +293,7 @@ network_bootstrap = function(y, X, N, bootstrap_time, index, data, link = 'probi
   if (boot_repeat >= 1){
 
     for (re in 1: boot_repeat){
+      est_critical_all = cof_B
       # prepare for bootstrap
       cof_B = NULL
       log_likelihood_estimate_B = NULL
@@ -419,7 +393,7 @@ network_bootstrap = function(y, X, N, bootstrap_time, index, data, link = 'probi
   if(is.null(beta_NULL) != 1){
     res = list(est_MLE = cof, est_mean = est_correct_mean, est_median = est_correct_median, est_mode = est_correct_mode,
                sd = boostrap_sd, est_critical = est_critical,
-               est_bootstrap_all = cof_B, cof_MLE_NULL = cof_NULL, cof_bootstrap_NULL = cof_B_NULL,
+               est_bootstrap_all = cof_B, est_bootstrap_all_critical = est_critical_all, cof_MLE_NULL = cof_NULL, cof_bootstrap_NULL = cof_B_NULL,
                APE_MLE_estimate = APE_MLE_estimate, APE_MLE_se = APE_MLE_se,
                log_likelihood_MLE = log_likelihood_estimate, log_likelihood_Bootstrap = log_likelihood_estimate_B,
                log_likelihood_MLE_NULL = log_likelihood_estimate_NULL, log_likelihood_Bootstrap_NULL = log_likelihood_estimate_B_NULL,
@@ -427,7 +401,7 @@ network_bootstrap = function(y, X, N, bootstrap_time, index, data, link = 'probi
     )
   }
   else{
-    res = list(est_MLE = cof, est_mean = est_correct_mean, est_median = est_correct_median, est_mode = est_correct_mode, sd = boostrap_sd, est_bootstrap_all = cof_B,
+    res = list(est_MLE = cof, est_mean = est_correct_mean, est_median = est_correct_median, est_mode = est_correct_mode, sd = boostrap_sd, est_bootstrap_all = cof_B, est_bootstrap_all_critical = est_critical_all,
                APE_MLE_estimate = APE_MLE_estimate, APE_MLE_se = APE_MLE_se, est_critical = est_critical,
                log_likelihood_MLE = log_likelihood_estimate, log_likelihood_Bootstrap = log_likelihood_estimate_B,
                Hessian_MLE = Hessian_inv, X_origin = as.matrix(X_design), eta = eta, eta_MLE = eta_MLE, eta_mean = eta_mean, eta_median = eta_median, data = data
