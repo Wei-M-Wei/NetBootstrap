@@ -390,17 +390,31 @@ get_mode <- function(x, plot = FALSE) {
 }
 
 #' @export
-# Given x, y, q (numeric vector), and desired alpha, find critical value of q
 find_critical_low <- function(Q_star, Q_star_star, q_hat, target_prob = 0.025) {
   f <- function(a) {
+    # Calculate the a-th quantile of Q_star_star
     q_quant <- quantile(Q_star_star, probs = a, type = 7)
+    # Calculate fraction of Q_star shifted by q_hat below or equal q_quant
     frac <- mean((Q_star - q_hat) <= q_quant)
+    # Difference from target probability
     frac - target_prob
   }
 
+  # Check function at boundaries to make sure root exists
+  f0 <- f(0)
+  f1 <- f(1)
 
-  root <- uniroot(f, lower = 0, upper = 1)
-  return(root$root)
+  if (f0 > 0) {
+    warning("No root found: function above target at a=0, returning 0")
+    return(0)
+  } else if (f1 < 0) {
+    warning("No root found: function below target at a=1, returning 1")
+    return(1)
+  } else {
+    # Find the root a in [0,1]
+    root <- uniroot(f, lower = 0, upper = 1)
+    return(root$root)  # This is the 'a' value you want
+  }
 }
 
 #' @export
