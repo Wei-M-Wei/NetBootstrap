@@ -12,7 +12,8 @@ network_bootstrap(
   index,
   data,
   link = "probit",
-  beta_NULL = NULL
+  beta_NULL = NULL,
+  boot_repeat = 0
 )
 }
 \arguments{
@@ -37,7 +38,6 @@ A list of fitted results is returned.
 Within this outputted list, the following elements can be found:
 \item{cof_mean}{estimated coefficients corrected by the mean of the bootstrap estimates.}
 \item{cof_median}{estimated coefficients corrected by the median of the bootstrap estimates.}
-\item{cof_mode}{estimated coefficients corrected by the statistic mode of the bootstrap estimates.}
 \item{sd}{stand deviation form the bootstrap procedure.}
 \item{cof_MLE}{estimated coefficients from Maximum Likelihood Estimates (MLE).}
 \item{cof_bootstrap_all}{all bootstrap estimates.}

@@ -16,7 +16,6 @@
 #' Within this outputted list, the following elements can be found:
 #'     \item{cof_mean}{estimated coefficients corrected by the mean of the bootstrap estimates.}
 #'     \item{cof_median}{estimated coefficients corrected by the median of the bootstrap estimates.}
-#'     \item{cof_mode}{estimated coefficients corrected by the statistic mode of the bootstrap estimates.}
 #'     \item{sd}{stand deviation form the bootstrap procedure.}
 #'     \item{cof_MLE}{estimated coefficients from Maximum Likelihood Estimates (MLE).}
 #'     \item{cof_bootstrap_all}{all bootstrap estimates.}
@@ -107,14 +106,14 @@
 #' sd = fit$sd
 
 #'
-network_bootstrap = function(y, X, N, bootstrap_time, index, data, link = 'probit', beta_NULL = NULL){
+network_bootstrap = function(y, X, N, bootstrap_time, index, data, link = 'probit', beta_NULL = NULL, boot_repeat = 0){
 
   data = data.frame(y = y, X = X, data[,index[1]], data[,index[2]])
   K = dim(X)[2]
   # order the data
   if(is.null(colnames(X)) == 1){
     colnames(data)[(dim(data)[2]-1):dim(data)[2]] = index
-    data = data[order(data[,index[2]], data[,index[1]]),]
+    data = data[order(data[,index[2]], data[,index[1]]), ]
     p = dim(X)[2]
     y = data$y
     if (p==1){
@@ -260,6 +259,9 @@ network_bootstrap = function(y, X, N, bootstrap_time, index, data, link = 'probi
   est_correct_mean[K+1] = sum(est_correct_mean[(N+K+1):(N+N+K)]) - sum(est_correct_mean[(K+2):(N+K)])
   est_correct_median[K+1] = sum(est_correct_median[(N+K+1):(N+N+K)]) - sum(est_correct_median[(K+2):(N+K)])
   est_correct_mode[K+1] = sum(est_correct_mode[(N+K+1):(N+N+K)]) - sum(est_correct_mode[(K+2):(N+K)])
+
+
+
   # calculate the eta = xbeta + alpda_i + gamma_j
   alpha <- est_correct_mean[(K + 1):(K + N)]
   gamma <- est_correct_mean[(K + N + 1):(K + N + N)]
@@ -283,6 +285,97 @@ network_bootstrap = function(y, X, N, bootstrap_time, index, data, link = 'probi
   gamma_sub <- gamma[id_idx[keep]]
   # Reconstruct eta = Xβ + α_i + γ_t
   eta_median = est_correct_median[1:K] %*% t( X_to ) + (alpha_sub + gamma_sub)
+
+  if (boot_repeat > 1){
+    for (re in 1: boot_repeat){
+      # prepare for bootstrap
+      cof_B = NULL
+      log_likelihood_estimate_B = NULL
+      cof_B_NULL = NULL
+      log_likelihood_estimate_B_NULL = NULL
+
+      # bootstrap procedure
+      for (k in seq(bootstrap_time)) {
+        if (link == 'probit'){
+          epsi_it = rnorm(length(y), 0, 1)
+        }else{
+          epsi_it = rlogis(N, location = 0, scale = 1)
+        }
+        Y = as.numeric(eta_median > epsi_it)
+        data_boostrap <- data.frame(y = Y, X = X_design)
+        model_B <-
+          glm(y ~ . - 1, data = data_boostrap, family = binomial(link = link), control = glm.control(epsilon = 1e-10))
+        fit_B = summary(model_B)
+        cof_B = rbind(cof_B, unlist(coef(model_B)))
+        log_likelihood_estimate_B <- rbind(log_likelihood_estimate_B, logLik(model_B))
+
+
+        # constrained
+        data_2 = data_boostrap
+        if(is.null(beta_NULL) != 1){
+          formula <- as.formula( paste("y ~ -1 +", paste(colnames(data_2[,-2])[-1], collapse = " + "), "+ offset(offset_term)"))
+          data_2$offset_term <- cof[1] * X_design[,1]
+          model_B_NULL <-
+            glm(formula = formula, data = data_2, family=binomial(link = link), control = glm.control(epsilon = 1e-10))
+          fit_B_NULL = summary(model_B_NULL)
+          cof_B_NULL = rbind(cof_B_NULL, c(beta_NULL, unlist(coef(model_B_NULL))))
+          log_likelihood_estimate_B_NULL <- rbind(log_likelihood_estimate_B_NULL, logLik(model_B_NULL))
+        }
+      }
+
+      # get the final results
+      cof_B[,K+1] = apply(cof_B[,(N+K+1):(N+N+K)],1,sum) - apply(cof_B[,(K+2):(N+K)],1,sum)
+
+
+      # calculate the eta = xbeta + alpda_i + gamma_j
+      alpha <- cof_B[,(K + 1):(K + N)]
+      gamma <- cof_B[,(K + N + 1):(K + N + N)]
+      # Generate implied id and time indices
+      id_idx <- rep(1:N, each = N)     # id changes slowly
+      time_idx <- rep(1:N, times = N)  # time changes quickly
+      keep <- id_idx != time_idx
+      alpha_sub <- alpha[,time_idx[keep]]
+      gamma_sub <- gamma[,id_idx[keep]]
+      # Reconstruct eta = Xβ + α_i + γ_t
+      eta = cof_B[,1:K] %*% t( X_to ) + (alpha_sub + gamma_sub)
+
+
+      cof_boost_mean = apply(cof_B, 2, mean)
+      cof_boost_median = apply(cof_B, 2, median)
+      cof_boost_mode = apply(cof_B, 2, get_mode)
+      est_correct_mean = cof - (cof_boost_mean - est_correct_median)
+      est_correct_median = cof - (cof_boost_median - est_correct_median)
+      est_correct_mode = cof - (cof_boost_mode - est_correct_mode)
+      est_correct_mean[K+1] = sum(est_correct_mean[(N+K+1):(N+N+K)]) - sum(est_correct_mean[(K+2):(N+K)])
+      est_correct_median[K+1] = sum(est_correct_median[(N+K+1):(N+N+K)]) - sum(est_correct_median[(K+2):(N+K)])
+      est_correct_mode[K+1] = sum(est_correct_mode[(N+K+1):(N+N+K)]) - sum(est_correct_mode[(K+2):(N+K)])
+
+
+      # calculate the eta = xbeta + alpda_i + gamma_j
+      alpha <- est_correct_mean[(K + 1):(K + N)]
+      gamma <- est_correct_mean[(K + N + 1):(K + N + N)]
+      # Generate implied id and time indices
+      id_idx <- rep(1:N, each = N)     # id changes slowly
+      time_idx <- rep(1:N, times = N)  # time changes quickly
+      keep <- id_idx != time_idx
+      alpha_sub <- alpha[time_idx[keep]]
+      gamma_sub <- gamma[id_idx[keep]]
+      # Reconstruct eta = Xβ + α_i + γ_t
+      eta_mean = est_correct_mean[1:K] %*% t( X_to ) + (alpha_sub + gamma_sub)
+
+      # calculate the eta = xbeta + alpda_i + gamma_j
+      alpha <- est_correct_median[(K + 1):(K + N)]
+      gamma <- est_correct_median[(K + N + 1):(K + N + N)]
+      # Generate implied id and time indices
+      id_idx <- rep(1:N, each = N)     # id changes slowly
+      time_idx <- rep(1:N, times = N)  # time changes quickly
+      keep <- id_idx != time_idx
+      alpha_sub <- alpha[time_idx[keep]]
+      gamma_sub <- gamma[id_idx[keep]]
+      # Reconstruct eta = Xβ + α_i + γ_t
+      eta_median = est_correct_median[1:K] %*% t( X_to ) + (alpha_sub + gamma_sub)
+    }
+  }
 
   if (K == 1){
     boostrap_sd = sd(cof_B[,1:K])
