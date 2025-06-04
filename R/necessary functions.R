@@ -389,7 +389,7 @@ get_mode <- function(x, plot = FALSE) {
   return(mode_val)
 }
 
-#' @export
+# Given x, y, q (numeric vector), and desired alpha, find critical value of q
 find_critical_low <- function(Q_star, Q_star_star, q_hat, target_prob = 0.025) {
   f <- function(a) {
     # Calculate the a-th quantile of Q_star_star
@@ -417,7 +417,6 @@ find_critical_low <- function(Q_star, Q_star_star, q_hat, target_prob = 0.025) {
   }
 }
 
-#' @export
 find_critical_up <- function(Q_star, Q_star_star, q_hat, target_prob = 0.025) {
   f <- function(a) {
     q_quant <- quantile(Q_star_star, probs = a, type = 7)
