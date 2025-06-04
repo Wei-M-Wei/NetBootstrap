@@ -1191,6 +1191,15 @@ get_APE_analytical_ameri<- function(y, X, N, data, index, fit, L = 1, model = 'p
     re = get_weighted_fe_projection(X_into$X, weight, X_into$id, X_into$time)
     re_matrix = vector_to_matrix(re, N, ind1 = X_into$id, ind2 = X_into$time)
     tilde_X_list[[k]] = X - re_matrix
+
+    if (is.numeric(X) && length(unique(X)) == 2){
+      J[, k] <- - sum(re_matrix * d_APE_estimate) / (N*N-1)
+      J[k, k] <- sum(phi_XB) / (N*N-1) + J[j, j]
+    }else{
+      J[, k] <- sum(tilde_X_list[[k]] * d_APE_estimate) / (N*N-1)
+      J[k, k] <- phi_XB / (N*N-1) + J[j, j]
+    }
+
   }
 
 
@@ -1246,6 +1255,7 @@ get_APE_analytical<- function(y, X, N, data, index, fit, L = 1, model = 'probit'
   APE_MLE_list <- vector("list", K)
   d_APE_MLE_list <- vector("list", K)
   Psi_list = vector("list", K)
+  re_matrix_array <- array(0, dim = c(N, N, K))
   W_hat <- matrix(0, nrow = K, ncol = K)
   B_hat = matrix(0, nrow = K, ncol = 1)
   D_hat = matrix(0, nrow = K, ncol = 1)
@@ -1261,7 +1271,7 @@ get_APE_analytical<- function(y, X, N, data, index, fit, L = 1, model = 'probit'
     if (is.numeric(X) && length(unique(X)) == 2) {
       X_max = as.numeric(max(unique(X)))
       X_min = as.numeric(min(unique(X)))
-      test1 = dnorm(cof_estimate* X_max + eta - cof_estimate * X )
+      #test1 = dnorm(cof_estimate* X_max + eta - cof_estimate * X )
 
       if (model == 'probit'){
         APE_estimate = (pnorm(cof_estimate* X_max + eta - cof_estimate * X ) - pnorm(cof_estimate* X_min + eta - cof_estimate * X))
@@ -1355,6 +1365,7 @@ get_APE_analytical<- function(y, X, N, data, index, fit, L = 1, model = 'probit'
     re = get_weighted_fe_projection(X_into$X, weight, X_into$id, X_into$time)
     re_matrix = vector_to_matrix(re, N, ind1 = X_into$id, ind2 = X_into$time)
     tilde_X_list[[k]] = X - re_matrix
+    re_matrix_array[,,k] = re_matrix
   }
 
 
@@ -1364,6 +1375,33 @@ get_APE_analytical<- function(y, X, N, data, index, fit, L = 1, model = 'probit'
   APE_array <- array(unlist(APE_list), dim = c(N, N, K))
   d_APE_array <- array(unlist(d_APE_list), dim = c(N, N, K))
 
+  J = matrix(0, K,K)
+  for (k in 1:K) {
+    X = X_to[,k]
+    if (is.numeric(X) && length(unique(X)) == 2){
+      X_max = as.numeric(max(unique(X)))
+      X_min = as.numeric(min(unique(X)))
+      if (model == 'probit'){
+        f1_own = dnorm(cof_estimate * X_max + eta - cof_estimate * X )
+      }else{
+        f1_own = dlogis(cof_estimate* X_max + eta - cof_estimate * X )
+      }
+      for (j in 1:K){
+        diag(tilde_X_array[,,j]) = 0
+        diag(d_APE_array[,,k]) = 0
+        J[j, k] <- - sum(re_matrix_array[,,j] * d_APE_array[,,k]) / (N*N-1)
+      }
+      J[k, k] <- sum(f1_own) / (N*N-1) + J[k, k]
+      J[- k, k] <- colSums(X_to[, - k, drop = FALSE] * matrix_to_panel_df(as.matrix(d_APE_array[,,k]))$X) / (N*N-1) + J[- k, k]
+    }else{
+      for (j in 1:K){
+        diag(tilde_X_array[,,j]) = 0
+        diag(d_APE_array[,,k]) = 0
+        J[j, k] <- sum(tilde_X_array[,,j] * d_APE_array[,,k]) / (N*N-1)
+      }
+      J[k, k] <- sum(phi_XB) / (N*N-1) + J[k, k]
+    }
+  }
 
   # Step 4: Initialize sum matrix for outer products
   W_hat <- matrix(0, nrow = K, ncol = K)
@@ -1383,16 +1421,25 @@ get_APE_analytical<- function(y, X, N, data, index, fit, L = 1, model = 'probit'
   for (i in 1:N) {
     for (j in 1:N) {
       if(j!=i){
-        tau[i,j,] = as.matrix(t(D_beta_APE) %*% solve(W_hat)) * t(as.matrix(H[i,j] * (y[i,j] - Phi_XB[i,j]) * tilde_X_array[i,j,])) - Psi_array[i,j,] * H[i,j] * (y[i,j] - Phi_XB[i,j])
+        tau[i,j,] = as.matrix(t(J) %*% solve(W_hat)) %*% as.matrix(H[i,j] * (y[i,j] - Phi_XB[i,j]) * tilde_X_array[i,j,]) - Psi_array[i,j,] * H[i,j] * (y[i,j] - Phi_XB[i,j])
       }
     }
   }
 
-  tilde_APE_array = array(0, dim = c(N, N, K))
 
-  se =  sqrt( diag(compute_expression_array(tilde_APE_array, tau)) )/(N*(N-1))
+  for (k in 1:K) {
+    diag(tau[,,k]) <- 0
+  }
+  tau_sum = 0
+  for (i in 1:N) {
+    for (t in 1:N) {
+      v <- tau[i, t, ]            # tau_{it} as a vector
+      tau_sum <- tau_sum + tcrossprod(v)  # v %*% t(v)
+    }
+  }
+
+  se =  sqrt( diag( tau_sum ) )/(N*(N-1))
   res = list( APE = APE_analytical, se = se)
-  #, test1 = test1, test2 = test2, test3 = test3, test4 = test4, test5 = test5, test6 = test6)
 
   return(res)
 
@@ -1407,6 +1454,7 @@ get_APE_jackknife <- function(y, X, N, index, data, fit, L = 1, model = 'probit'
   APE_list <- vector("list", K)
   d_APE_list <- vector("list", K)
   Psi_list = vector("list", K)
+  re_matrix_array = array(0, dim = c(N,N,K))
   W_hat <- matrix(0, nrow = K, ncol = K)
   X_start = X
   y_to = y
@@ -1421,12 +1469,12 @@ get_APE_jackknife <- function(y, X, N, index, data, fit, L = 1, model = 'probit'
       d_APE_estimate = matrix(0,N-1,N*(N-1))
       dd_APE_estimate = matrix(0,N-1,N*(N-1))
       if (model == 'probit'){
-        for (i in 1:N-1) {
+        for (i in 1:(N-1)) {
           APE_estimate[i,] = (pnorm(cof_estimate[i]* X_max + eta[,i] - cof_estimate[i] * X ) - pnorm(cof_estimate[i]* X_min + eta[,i] - cof_estimate[i] * X))
           d_APE_estimate[i,] = (dnorm(cof_estimate[i]* X_max + eta[,i] - cof_estimate[i] * X ) - dnorm(cof_estimate[i]* X_min + eta[,i] - cof_estimate[i] * X))
           dd_APE_estimate[i,] = (-(cof_estimate[i]* X_max + eta[,i] - cof_estimate[i] * X) * dnorm(cof_estimate[i]* X_max + eta[,i] - cof_estimate[i] * X) + (cof_estimate[i]* X_min + eta[,i] - cof_estimate[i] * X)  * dnorm(cof_estimate[i]* X_min + eta[,i] - cof_estimate[i] * X))
         }}else{
-          for (i in 1:N-1) {
+          for (i in 1:(N-1)) {
             APE_estimate[i,] = (plogis(cof_estimate[i]* X_max + eta[,i] - cof_estimate[i] * X ) - plogis(cof_estimate[i]* X_min + eta[,i] - cof_estimate[i] * X))
             d_APE_estimate[i,] = (dlogis(cof_estimate[i]* X_max + eta[,i] - cof_estimate[i] * X ) - dlogis(cof_estimate[i]* X_min + eta[,i] - cof_estimate[i] * X))
             dd_APE_estimate = (dlogis(cof_estimate[i]* X_max + eta[,i] - cof_estimate[i] * X ) * ( 1 - 2*plogis(cof_estimate[i] * X_max + eta[,i] - cof_estimate[i] * X ) )
@@ -1440,14 +1488,14 @@ get_APE_jackknife <- function(y, X, N, index, data, fit, L = 1, model = 'probit'
       d_APE_estimate = matrix(0,N-1,N*(N-1))
       dd_APE_estimate = matrix(0,N-1,N*(N-1))
       if (model == 'probit'){
-        for (i in 1:N-1) {
+        for (i in 1:(N-1)) {
           APE_estimate[i,] = cof_estimate[i] * dnorm(eta[,i])
           d_APE_estimate[i,] = cof_estimate[i] * (-eta[,i]) * dnorm(eta[,i])
           dd_APE_estimate[i,] = cof_estimate[i]*(- dnorm(eta[,i]) + eta[,i]^2 * dnorm(eta[,i]))
         }
       }else{
-        for (i in 1:N-1) {
-          APE_estimate[i,] = cof_estimate[i] * dlogis(eta)
+        for (i in 1:(N-1)) {
+          APE_estimate[i,] = cof_estimate[i] * dlogis(eta[,i])
           d_APE_estimate[i,] = cof_estimate[i] * (1 - 2 * plogis(eta[,i])) * dlogis(eta[,i])
           dd_APE_estimate[i,] = cof_estimate[i] * (- 2 * dlogis(eta[,i])) * dlogis(eta[,i]) + cof_estimate[i] * (1 - 2 * plogis(eta[,i])) * dlogis(eta[,i]) * (1-2*plogis(eta[,i]))
         }
@@ -1518,6 +1566,7 @@ get_APE_jackknife <- function(y, X, N, index, data, fit, L = 1, model = 'probit'
     re = get_weighted_fe_projection(X_into$X, weight, X_into$id, X_into$time)
     re_matrix = vector_to_matrix(re, N, ind1 = X_into$id, ind2 = X_into$time)
     tilde_X_list[[k]] = X - re_matrix
+    re_matrix_array[,,k] = re_matrix
 
   }
 
@@ -1527,11 +1576,38 @@ get_APE_jackknife <- function(y, X, N, index, data, fit, L = 1, model = 'probit'
   APE_array <- array(unlist(APE_list), dim = c(N, N, K))
   d_APE_array <- array(unlist(d_APE_list), dim = c(N, N, K))
 
+  J = matrix(0, K,K)
+  for (k in 1:K) {
+    X = X_start[,k]
+    if (is.numeric(X) && length(unique(X)) == 2){
+      X_max = as.numeric(max(unique(X)))
+      X_min = as.numeric(min(unique(X)))
+      if (model == 'probit'){
+        f1_own = dnorm(cof_estimate * X_max + eta - cof_estimate * X )
+      }else{
+        f1_own = dlogis(cof_estimate * X_max + eta - cof_estimate * X )
+      }
+      for (j in 1:K){
+        diag(tilde_X_array[,,j]) = 0
+        diag(d_APE_array[,,k]) = 0
+        J[j, k] <- - sum(re_matrix_array[,,j] * d_APE_array[,,k]) / (N*N-1)
+      }
+      J[k, k] <- sum(f1_own) / (N*N-1) + J[k, k]
+      J[- k, k] <- colSums(X_start[, - k, drop = FALSE] * matrix_to_panel_df(as.matrix(d_APE_array[,,k]))$X) / (N*N-1) + J[- k, k]
+    }else{
+      for (j in 1:K){
+        diag(tilde_X_array[,,j]) = 0
+        diag(d_APE_array[,,k]) = 0
+        J[j, k] <- sum(tilde_X_array[,,j] * d_APE_array[,,k]) / (N*N-1)
+      }
+      J[k, k] <- sum(phi_XB) / (N*N-1) + J[k, k]
+    }
+  }
+
   # Step 4: Initialize sum matrix for outer products
   W_hat <- matrix(0, nrow = K, ncol = K)
   D_beta_APE <- 0
   tau = array(0, dim = c(N, N, K))
-
   # Step 5: For each position (i, j), extract vector and compute outer product
   for (i in 1:N) {
     for (j in 1:N) {
@@ -1546,14 +1622,24 @@ get_APE_jackknife <- function(y, X, N, index, data, fit, L = 1, model = 'probit'
   for (i in 1:N) {
     for (j in 1:N) {
       if(j!=i){
-        tau[i,j,] = as.matrix(t(D_beta_APE) %*% solve(W_hat)) * as.matrix(t(H[i,j] * (y[i,j] - Phi_XB[i,j]) * tilde_X_array[i,j,])) - Psi_array[i,j,] * H[i,j] * (y[i,j] - Phi_XB[i,j])
+        tau[i,j,] = as.matrix(t(J) %*% solve(W_hat)) %*% as.matrix(H[i,j] * (y[i,j] - Phi_XB[i,j]) * tilde_X_array[i,j,]) - Psi_array[i,j,] * H[i,j] * (y[i,j] - Phi_XB[i,j])
       }
     }
   }
 
-  tilde_APE_array = array(0, dim = c(N, N, K))
 
-  se = sqrt( diag(compute_expression_array(tilde_APE_array, tau)) )/(N*(N-1))
+  for (k in 1:K) {
+    diag(tau[,,k]) <- 0
+  }
+  tau_sum = 0
+  for (i in 1:N) {
+    for (t in 1:N) {
+      v <- tau[i, t, ]            # tau_{it} as a vector
+      tau_sum <- tau_sum + tcrossprod(v)  # v %*% t(v)
+    }
+  }
+
+  se =  sqrt( diag( tau_sum ) )/(N*(N-1))
 
   res = list(APE = APE_jack, se = se)
 
@@ -1571,6 +1657,7 @@ get_APE_MLE <- function(y, X, N, index, data, fit,  model = 'probit'){
   APE_list <- vector("list", K)
   d_APE_list <- vector("list", K)
   Psi_list = vector("list", K)
+  re_matrix_array = array(0, dim = c(N,N,K))
   W_hat <- matrix(0, nrow = K, ncol = K)
   X_start = X
   y_to = y
@@ -1669,6 +1756,7 @@ get_APE_MLE <- function(y, X, N, index, data, fit,  model = 'probit'){
     re = get_weighted_fe_projection(X_into$X, weight, X_into$id, X_into$time)
     re_matrix = vector_to_matrix(re, N, ind1 = X_into$id, ind2 = X_into$time)
     tilde_X_list[[k]] = X - re_matrix
+    re_matrix_array[,,k] = re_matrix
 
   }
 
@@ -1677,6 +1765,34 @@ get_APE_MLE <- function(y, X, N, index, data, fit,  model = 'probit'){
   tilde_Psi_array <- array(unlist(tilde_Psi_list), dim = c(N, N, K))
   APE_array <- array(unlist(APE_list), dim = c(N, N, K))
   d_APE_array <- array(unlist(d_APE_list), dim = c(N, N, K))
+
+  J = matrix(0, K,K)
+  for (k in 1:K) {
+    X = X_start[,k]
+    if (is.numeric(X) && length(unique(X)) == 2){
+      X_max = as.numeric(max(unique(X)))
+      X_min = as.numeric(min(unique(X)))
+      if (model == 'probit'){
+        f1_own = dnorm(cof_estimate * X_max + eta - cof_estimate * X )
+      }else{
+        f1_own = dlogis(cof_estimate* X_max + eta - cof_estimate * X )
+      }
+      for (j in 1:K){
+        diag(tilde_X_array[,,j]) = 0
+        diag(d_APE_array[,,k]) = 0
+        J[j, k] <- - sum(re_matrix_array[,,j] * d_APE_array[,,k]) / (N*N-1)
+      }
+      J[k, k] <- sum(f1_own) / (N*N-1) + J[k, k]
+      J[- k, k] <- colSums(X_start[, - k, drop = FALSE] * matrix_to_panel_df(as.matrix(d_APE_array[,,k]))$X) / (N*N-1) + J[- k, k]
+    }else{
+      for (j in 1:K){
+        diag(tilde_X_array[,,j]) = 0
+        diag(d_APE_array[,,k]) = 0
+        J[j, k] <- sum(tilde_X_array[,,j] * d_APE_array[,,k]) / (N*N-1)
+      }
+      J[k, k] <- sum(phi_XB) / (N*N-1) + J[k, k]
+    }
+  }
 
   # Step 4: Initialize sum matrix for outer products
   W_hat <- matrix(0, nrow = K, ncol = K)
@@ -1696,14 +1812,24 @@ get_APE_MLE <- function(y, X, N, index, data, fit,  model = 'probit'){
   for (i in 1:N) {
     for (j in 1:N) {
       if(j!=i){
-        tau[i,j,] = as.matrix(t(D_beta_APE) %*% solve(W_hat)) * as.matrix(t(H[i,j] * (y[i,j] - Phi_XB[i,j]) * tilde_X_array[i,j,])) - Psi_array[i,j,] * H[i,j] * (y[i,j] - Phi_XB[i,j])
+        tau[i,j,] = as.matrix(t(J) %*% solve(W_hat)) %*% as.matrix(H[i,j] * (y[i,j] - Phi_XB[i,j]) * tilde_X_array[i,j,]) - Psi_array[i,j,] * H[i,j] * (y[i,j] - Phi_XB[i,j])
       }
     }
   }
 
-  tilde_APE_array = array(0, dim = c(N, N, K))
 
-  se = sqrt( diag(compute_expression_array(tilde_APE_array, tau)) )/(N*(N-1))
+  for (k in 1:K) {
+    diag(tau[,,k]) <- 0
+  }
+  tau_sum = 0
+  for (i in 1:N) {
+    for (t in 1:N) {
+      v <- tau[i, t, ]            # tau_{it} as a vector
+      tau_sum <- tau_sum + tcrossprod(v)  # v %*% t(v)
+    }
+  }
+
+  se =  sqrt( diag( tau_sum ) )/(N*(N-1))
 
   res = list(APE = APE, se = se)
 
