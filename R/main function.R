@@ -160,7 +160,7 @@ network_bootstrap = function(y, X, N, bootstrap_time, index, data, link = 'probi
 
   # MLE
   model <-
-    glm(y ~ . - 1, data = data_in, family = binomial(link = link), control = glm.control(epsilon = 1e-10))
+    glm(y ~ . - 1, data = data_in, family = binomial(link = link), control = glm.control(epsilon = 1e-10, maxit = 1000))
   fit = summary(model)
   Hessian_inv = vcov(model)
   cof = unlist(coef(model))
@@ -221,7 +221,7 @@ network_bootstrap = function(y, X, N, bootstrap_time, index, data, link = 'probi
     Y = as.numeric(eta_MLE > epsi_it)
     data_boostrap <- data.frame(y = Y, X = X_design)
     model_B <-
-      glm(y ~ . - 1, data = data_boostrap, family = binomial(link = link), control = glm.control(epsilon = 1e-10))
+      glm(y ~ . - 1, data = data_boostrap, family = binomial(link = link), control = glm.control(epsilon = 1e-10, maxit = 1000))
     fit_B = summary(model_B)
     cof_B = rbind(cof_B, unlist(coef(model_B)))
     log_likelihood_estimate_B <- rbind(log_likelihood_estimate_B, logLik(model_B))
@@ -642,8 +642,8 @@ split_jackknife = function(y, X, N, index, data, link = 'probit', beta_NULL = NU
       phi_XB <- dnorm(cov_sum)  # PDF (φ(Xβ))
       Phi_XB[row(Phi_XB) == col(Phi_XB)] = 0
       phi_XB[row(phi_XB) == col(phi_XB)] = 0
-      Phi_XB <- pmax(Phi_XB, 1e-9)
-      Phi_XB <- pmin(Phi_XB, 1 - 1e-9)
+      Phi_XB <- pmax(Phi_XB, 1e-7)
+      Phi_XB <- pmin(Phi_XB, 1 - 1e-7)
       #### Another way to calculate the bias corrected
       # another way to calculate the analytical corrected estimate
       H = phi_XB/(Phi_XB*(1-Phi_XB))
@@ -653,8 +653,8 @@ split_jackknife = function(y, X, N, index, data, link = 'probit', beta_NULL = NU
       phi_XB <- dlogis(cov_sum)  # PDF (φ(Xβ))
       Phi_XB[row(Phi_XB) == col(Phi_XB)] = 0
       phi_XB[row(phi_XB) == col(phi_XB)] = 0
-      Phi_XB <- pmax(Phi_XB, 1e-9)
-      Phi_XB <- pmin(Phi_XB, 1 - 1e-9)
+      Phi_XB <- pmax(Phi_XB, 1e-7)
+      Phi_XB <- pmin(Phi_XB, 1 - 1e-7)
       H = matrix(1, N, N)
       diag(H) = 0
       small_w = phi_XB
@@ -732,12 +732,12 @@ analytical_Amrei = function(y, X, N, index, data, link = 'probit', L = 1, beta_N
   }
   length(X)
   if ( K == 1){
-    mod <- alpaca::feglm(y ~ X | index.1 + index.2 , data = data, family = binomial(link), control = feglmControl( dev.tol = 1e-10, center.tol = 1e-10))
+    mod <- alpaca::feglm(y ~ X | index.1 + index.2 , data = data, family = binomial(link), control = feglmControl( dev.tol = 1e-8, center.tol = 1e-8))
   }else{
     formula <- as.formula(
       paste("y ~", paste(names(X), collapse = " + "), '| index.1 + index.2')
     )
-    mod <- alpaca::feglm(formula , data = data, family = binomial(link), control = feglmControl( dev.tol = 1e-10, center.tol = 1e-10))
+    mod <- alpaca::feglm(formula , data = data, family = binomial(link), control = feglmControl( dev.tol = 1e-8, center.tol = 1e-8))
   }
   mod$eta
   return(list(est_MLE = mod, est = biasCorr(mod, L = L, panel.structure = c( "classic"))))
@@ -850,10 +850,10 @@ analytical_corrected = function(y, X, N, index, data, link = 'probit', L = 1, be
       dd_F_fix = -cov_sum * phi_XB
       Phi_XB[row(Phi_XB) == col(Phi_XB)] = 0
       phi_XB[row(phi_XB) == col(phi_XB)] = 0
-      Phi_XB <- pmax(Phi_XB, 1e-9)
-      Phi_XB <- pmin(Phi_XB, 1 - 1e-9)
-      phi_XB <- pmax(phi_XB, 1e-9)
-      phi_XB <- pmin(phi_XB, 1 - 1e-9)
+      Phi_XB <- pmax(Phi_XB, 1e-7)
+      Phi_XB <- pmin(Phi_XB, 1 - 1e-7)
+      phi_XB <- pmax(phi_XB, 1e-7)
+      phi_XB <- pmin(phi_XB, 1 - 1e-7)
       #### Another way to calculate the bias corrected
       # another way to calculate the analytical corrected estimate
       H = phi_XB/(Phi_XB*(1-Phi_XB))
@@ -864,10 +864,10 @@ analytical_corrected = function(y, X, N, index, data, link = 'probit', L = 1, be
       dd_F_fix = phi_XB * ( 1 - 2 * Phi_XB)
       Phi_XB[row(Phi_XB) == col(Phi_XB)] = 0
       phi_XB[row(phi_XB) == col(phi_XB)] = 0
-      Phi_XB <- pmax(Phi_XB, 1e-9)
-      Phi_XB <- pmin(Phi_XB, 1 - 1e-9)
-      phi_XB <- pmax(phi_XB, 1e-9)
-      phi_XB <- pmin(phi_XB, 1 - 1e-9)
+      Phi_XB <- pmax(Phi_XB, 1e-7)
+      Phi_XB <- pmin(Phi_XB, 1 - 1e-7)
+      phi_XB <- pmax(phi_XB, 1e-7)
+      phi_XB <- pmin(phi_XB, 1 - 1e-7)
       #### Another way to calculate the bias corrected
       # another way to calculate the analytical corrected estimate
       H = matrix(1, N, N)
@@ -917,7 +917,7 @@ analytical_corrected = function(y, X, N, index, data, link = 'probit', L = 1, be
   }
 
   model_j_2 <-
-    glm(formula = formula, data = data_2, family=binomial(link = link))
+    glm(formula = formula, data = data_2, family=binomial(link = link), control = glm.control(epsilon = 1e-8, maxit = 1000) )
   fit_j_2 = summary(model_j_2)
   estimate_analytical_another = c(estimate_analytical_another, unlist(coef(model_j_2)))
   estimate_analytical_another[K+1] = sum(estimate_analytical_another[(N+K+1):(N+N+K)]) - sum(estimate_analytical_another[(K+2):(N+K)])
@@ -954,10 +954,10 @@ analytical_corrected = function(y, X, N, index, data, link = 'probit', L = 1, be
       dd_F_fix = -cov_sum * phi_XB
       Phi_XB[row(Phi_XB) == col(Phi_XB)] = 0
       phi_XB[row(phi_XB) == col(phi_XB)] = 0
-      Phi_XB <- pmax(Phi_XB, 1e-9)
-      Phi_XB <- pmin(Phi_XB, 1 - 1e-9)
-      phi_XB <- pmax(phi_XB, 1e-9)
-      phi_XB <- pmin(phi_XB, 1 - 1e-9)
+      Phi_XB <- pmax(Phi_XB, 1e-7)
+      Phi_XB <- pmin(Phi_XB, 1 - 1e-7)
+      phi_XB <- pmax(phi_XB, 1e-7)
+      phi_XB <- pmin(phi_XB, 1 - 1e-7)
       #### Another way to calculate the bias corrected
       # another way to calculate the analytical corrected estimate
       H = phi_XB/(Phi_XB*(1-Phi_XB))
@@ -968,10 +968,10 @@ analytical_corrected = function(y, X, N, index, data, link = 'probit', L = 1, be
       dd_F_fix = phi_XB * ( 1 - 2 * Phi_XB)
       Phi_XB[row(Phi_XB) == col(Phi_XB)] = 0
       phi_XB[row(phi_XB) == col(phi_XB)] = 0
-      Phi_XB <- pmax(Phi_XB, 1e-9)
-      Phi_XB <- pmin(Phi_XB, 1 - 1e-9)
-      phi_XB <- pmax(phi_XB, 1e-9)
-      phi_XB <- pmin(phi_XB, 1 - 1e-9)
+      Phi_XB <- pmax(Phi_XB, 1e-7)
+      Phi_XB <- pmin(Phi_XB, 1 - 1e-7)
+      phi_XB <- pmax(phi_XB, 1e-7)
+      phi_XB <- pmin(phi_XB, 1 - 1e-7)
 
       #### Another way to calculate the bias corrected
       # another way to calculate the analytical corrected estimate
@@ -1063,7 +1063,7 @@ get_APE_bootstrap <- function(y, X, N, data, fit, model = 'probit'){
     APE_MLE[k] = mean(APE_MLE_estimate)
     APE_mean_bootstrap[k] = APE_MLE[k] - (mean(APE[,k]) - APE_MLE[k])
     APE_median_bootstrap[k] = APE_MLE[k] - (median(APE[,k]) - APE_MLE[k])
-    se[k] = sd(APE)
+    se[k] = sd(APE[,k])
   }
   res = list(APE_MLE = APE_MLE, APE_mean_bootstrap = APE_mean_bootstrap, APE_median_bootstrap = APE_median_bootstrap, APE_bootstrap_all = APE, se = se)
   return(res)
@@ -1146,10 +1146,10 @@ get_APE_analytical_ameri<- function(y, X, N, data, index, fit, L = 1, model = 'p
     if (model == 'probit'){
       Phi_XB <- pnorm(cov_sum)  # CDF (Φ(Xβ))
       phi_XB <- dnorm(cov_sum)  # PDF (φ(Xβ))
-      Phi_XB <- pmax(Phi_XB, 1e-9)
-      Phi_XB <- pmin(Phi_XB, 1 - 1e-9)
-      phi_XB <- pmax(phi_XB, 1e-9)
-      phi_XB <- pmin(phi_XB, 1 - 1e-9)
+      Phi_XB <- pmax(Phi_XB, 1e-5)
+      Phi_XB <- pmin(Phi_XB, 1 - 1e-5)
+      phi_XB <- pmax(phi_XB, 1e-5)
+      phi_XB <- pmin(phi_XB, 1 - 1e-5)
       dd_F_fix = -cov_sum * phi_XB
       H = phi_XB/(Phi_XB*(1-Phi_XB))
       small_w = H * phi_XB
@@ -1159,10 +1159,10 @@ get_APE_analytical_ameri<- function(y, X, N, data, index, fit, L = 1, model = 'p
       dd_F_fix = phi_XB * ( 1 - 2 * Phi_XB)
       Phi_XB[row(Phi_XB) == col(Phi_XB)] = 0
       phi_XB[row(phi_XB) == col(phi_XB)] = 0
-      Phi_XB <- pmax(Phi_XB, 1e-9)
-      Phi_XB <- pmin(Phi_XB, 1 - 1e-9)
-      phi_XB <- pmax(phi_XB, 1e-9)
-      phi_XB <- pmin(phi_XB, 1 - 1e-9)
+      Phi_XB <- pmax(Phi_XB, 1e-5)
+      Phi_XB <- pmin(Phi_XB, 1 - 1e-5)
+      phi_XB <- pmax(phi_XB, 1e-5)
+      phi_XB <- pmin(phi_XB, 1 - 1e-5)
       H = matrix(1, N, N)
       diag(H) = 0
       small_w = phi_XB
@@ -1320,10 +1320,10 @@ get_APE_analytical<- function(y, X, N, data, index, fit, L = 1, model = 'probit'
     if (model == 'probit'){
       Phi_XB <- pnorm(cov_sum)  # CDF (Φ(Xβ))
       phi_XB <- dnorm(cov_sum)  # PDF (φ(Xβ))
-      Phi_XB <- pmax(Phi_XB, 1e-9)
-      Phi_XB <- pmin(Phi_XB, 1 - 1e-9)
-      phi_XB <- pmax(phi_XB, 1e-9)
-      phi_XB <- pmin(phi_XB, 1 - 1e-9)
+      Phi_XB <- pmax(Phi_XB, 1e-5)
+      Phi_XB <- pmin(Phi_XB, 1 - 1e-5)
+      phi_XB <- pmax(phi_XB, 1e-5)
+      phi_XB <- pmin(phi_XB, 1 - 1e-5)
       dd_F_fix = -cov_sum * phi_XB
       H = phi_XB/(Phi_XB*(1-Phi_XB))
       small_w = H * phi_XB
@@ -1333,10 +1333,10 @@ get_APE_analytical<- function(y, X, N, data, index, fit, L = 1, model = 'probit'
       dd_F_fix = phi_XB * ( 1 - 2 * Phi_XB)
       Phi_XB[row(Phi_XB) == col(Phi_XB)] = 0
       phi_XB[row(phi_XB) == col(phi_XB)] = 0
-      Phi_XB <- pmax(Phi_XB, 1e-9)
-      Phi_XB <- pmin(Phi_XB, 1 - 1e-9)
-      phi_XB <- pmax(phi_XB, 1e-9)
-      phi_XB <- pmin(phi_XB, 1 - 1e-9)
+      Phi_XB <- pmax(Phi_XB, 1e-5)
+      Phi_XB <- pmin(Phi_XB, 1 - 1e-5)
+      phi_XB <- pmax(phi_XB, 1e-5)
+      phi_XB <- pmin(phi_XB, 1 - 1e-5)
       H = matrix(1, N, N)
       diag(H) = 0
       small_w = phi_XB
@@ -1526,10 +1526,10 @@ get_APE_jackknife <- function(y, X, N, index, data, fit, L = 1, model = 'probit'
     if (model == 'probit'){
       Phi_XB <- pnorm(cov_sum)  # CDF (Φ(Xβ))
       phi_XB <- dnorm(cov_sum)  # PDF (φ(Xβ))
-      Phi_XB <- pmax(Phi_XB, 1e-9)
-      Phi_XB <- pmin(Phi_XB, 1 - 1e-9)
-      phi_XB <- pmax(phi_XB, 1e-9)
-      phi_XB <- pmin(phi_XB, 1 - 1e-9)
+      Phi_XB <- pmax(Phi_XB, 1e-7)
+      Phi_XB <- pmin(Phi_XB, 1 - 1e-7)
+      phi_XB <- pmax(phi_XB, 1e-7)
+      phi_XB <- pmin(phi_XB, 1 - 1e-7)
       dd_F_fix = -cov_sum * phi_XB
 
       H = phi_XB/(Phi_XB*(1-Phi_XB))
@@ -1541,10 +1541,10 @@ get_APE_jackknife <- function(y, X, N, index, data, fit, L = 1, model = 'probit'
       dd_F_fix = phi_XB * ( 1 - 2 * Phi_XB)
       Phi_XB[row(Phi_XB) == col(Phi_XB)] = 0
       phi_XB[row(phi_XB) == col(phi_XB)] = 0
-      Phi_XB <- pmax(Phi_XB, 1e-9)
-      Phi_XB <- pmin(Phi_XB, 1 - 1e-9)
-      phi_XB <- pmax(phi_XB, 1e-9)
-      phi_XB <- pmin(phi_XB, 1 - 1e-9)
+      Phi_XB <- pmax(Phi_XB, 1e-7)
+      Phi_XB <- pmin(Phi_XB, 1 - 1e-7)
+      phi_XB <- pmax(phi_XB, 1e-7)
+      phi_XB <- pmin(phi_XB, 1 - 1e-7)
       #### Another way to calculate the bias corrected
       # another way to calculate the analytical corrected estimate
       H = matrix(1, N, N)
@@ -1716,10 +1716,10 @@ get_APE_MLE <- function(y, X, N, index, data, fit,  model = 'probit'){
     if (model == 'probit'){
       Phi_XB <- pnorm(cov_sum)  # CDF (Φ(Xβ))
       phi_XB <- dnorm(cov_sum)  # PDF (φ(Xβ))
-      Phi_XB <- pmax(Phi_XB, 1e-9)
-      Phi_XB <- pmin(Phi_XB, 1 - 1e-9)
-      phi_XB <- pmax(phi_XB, 1e-9)
-      phi_XB <- pmin(phi_XB, 1 - 1e-9)
+      Phi_XB <- pmax(Phi_XB, 1e-7)
+      Phi_XB <- pmin(Phi_XB, 1 - 1e-7)
+      phi_XB <- pmax(phi_XB, 1e-7)
+      phi_XB <- pmin(phi_XB, 1 - 1e-7)
       dd_F_fix = -cov_sum * phi_XB
 
       H = phi_XB/(Phi_XB*(1-Phi_XB))
@@ -1731,10 +1731,10 @@ get_APE_MLE <- function(y, X, N, index, data, fit,  model = 'probit'){
       dd_F_fix = phi_XB * ( 1 - 2 * Phi_XB)
       Phi_XB[row(Phi_XB) == col(Phi_XB)] = 0
       phi_XB[row(phi_XB) == col(phi_XB)] = 0
-      Phi_XB <- pmax(Phi_XB, 1e-9)
-      Phi_XB <- pmin(Phi_XB, 1 - 1e-9)
-      phi_XB <- pmax(phi_XB, 1e-9)
-      phi_XB <- pmin(phi_XB, 1 - 1e-9)
+      Phi_XB <- pmax(Phi_XB, 1e-7)
+      Phi_XB <- pmin(Phi_XB, 1 - 1e-7)
+      phi_XB <- pmax(phi_XB, 1e-7)
+      phi_XB <- pmin(phi_XB, 1 - 1e-7)
       #### Another way to calculate the bias corrected
       # another way to calculate the analytical corrected estimate
       H = matrix(1, N, N)
