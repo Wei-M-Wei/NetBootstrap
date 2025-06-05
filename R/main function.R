@@ -160,7 +160,7 @@ network_bootstrap = function(y, X, N, bootstrap_time, index, data, link = 'probi
 
   # MLE
   model <-
-    glm(y ~ . - 1, data = data_in, family = binomial(link = link), control = glm.control(epsilon = 1e-10, maxit = 1000))
+    glm(y ~ . - 1, data = data_in, family = binomial(link = link), control = glm.control(epsilon = 1e-8, maxit = 200))
   fit = summary(model)
   Hessian_inv = vcov(model)
   cof = unlist(coef(model))
@@ -179,7 +179,7 @@ network_bootstrap = function(y, X, N, bootstrap_time, index, data, link = 'probi
     formula <- as.formula( paste("y ~ -1 +", paste(colnames(data_2[,-2])[-1], collapse = " + "), "+ offset(offset_term)"))
     data_2$offset_term <- beta_NULL * X_design[,1]
     model_NULL <-
-      glm(formula = formula, data = data_2, family=binomial(link = link), control = glm.control(epsilon = 1e-10))
+      glm(formula = formula, data = data_2, family=binomial(link = link), control = glm.control(epsilon = 1e-8))
     fit_NULL = summary(model_NULL)
     Hessian_inv_NULL = vcov(model_NULL)
     cof_NULL =  c(beta_NULL, unlist(coef(model_NULL)))
@@ -221,7 +221,7 @@ network_bootstrap = function(y, X, N, bootstrap_time, index, data, link = 'probi
     Y = as.numeric(eta_MLE > epsi_it)
     data_boostrap <- data.frame(y = Y, X = X_design)
     model_B <-
-      glm(y ~ . - 1, data = data_boostrap, family = binomial(link = link), control = glm.control(epsilon = 1e-10, maxit = 1000))
+      glm(y ~ . - 1, data = data_boostrap, family = binomial(link = link), control = glm.control(epsilon = 1e-8, maxit = 200))
     fit_B = summary(model_B)
     cof_B = rbind(cof_B, unlist(coef(model_B)))
     log_likelihood_estimate_B <- rbind(log_likelihood_estimate_B, logLik(model_B))
@@ -233,7 +233,7 @@ network_bootstrap = function(y, X, N, bootstrap_time, index, data, link = 'probi
       formula <- as.formula( paste("y ~ -1 +", paste(colnames(data_2[,-2])[-1], collapse = " + "), "+ offset(offset_term)"))
       data_2$offset_term <- cof[1] * X_design[,1]
       model_B_NULL <-
-        glm(formula = formula, data = data_2, family=binomial(link = link), control = glm.control(epsilon = 1e-10))
+        glm(formula = formula, data = data_2, family=binomial(link = link), control = glm.control(epsilon = 1e-8))
       fit_B_NULL = summary(model_B_NULL)
       cof_B_NULL = rbind(cof_B_NULL, c(beta_NULL, unlist(coef(model_B_NULL))))
       log_likelihood_estimate_B_NULL <- rbind(log_likelihood_estimate_B_NULL, logLik(model_B_NULL))
@@ -317,7 +317,7 @@ network_bootstrap = function(y, X, N, bootstrap_time, index, data, link = 'probi
         Y = as.numeric(eta_median > epsi_it)
         data_boostrap <- data.frame(y = Y, X = X_design)
         model_B <-
-          glm(y ~ . - 1, data = data_boostrap, family = binomial(link = link), control = glm.control(epsilon = 1e-10))
+          glm(y ~ . - 1, data = data_boostrap, family = binomial(link = link), control = glm.control(epsilon = 1e-8))
         fit_B = summary(model_B)
         cof_B = rbind(cof_B, unlist(coef(model_B)))
         log_likelihood_estimate_B <- rbind(log_likelihood_estimate_B, logLik(model_B))
@@ -329,7 +329,7 @@ network_bootstrap = function(y, X, N, bootstrap_time, index, data, link = 'probi
           formula <- as.formula( paste("y ~ -1 +", paste(colnames(data_2[,-2])[-1], collapse = " + "), "+ offset(offset_term)"))
           data_2$offset_term <- cof[1] * X_design[,1]
           model_B_NULL <-
-            glm(formula = formula, data = data_2, family=binomial(link = link), control = glm.control(epsilon = 1e-10))
+            glm(formula = formula, data = data_2, family=binomial(link = link), control = glm.control(epsilon = 1e-8))
           fit_B_NULL = summary(model_B_NULL)
           cof_B_NULL = rbind(cof_B_NULL, c(beta_NULL, unlist(coef(model_B_NULL))))
           log_likelihood_estimate_B_NULL <- rbind(log_likelihood_estimate_B_NULL, logLik(model_B_NULL))
@@ -476,7 +476,7 @@ split_jackknife = function(y, X, N, index, data, link = 'probit', beta_NULL = NU
 
   # MLE
   model <-
-    speedglm(y ~ . - 1, data = data_in, family = binomial(link = link), control = glm.control(epsilon = 1e-10))
+    speedglm(y ~ . - 1, data = data_in, family = binomial(link = link), control = glm.control(epsilon = 1e-8))
   fit = summary(model)
   Hessian_inv = vcov(model)
   cof = unlist(coef(model))
@@ -802,7 +802,7 @@ analytical_corrected = function(y, X, N, index, data, link = 'probit', L = 1, be
 
   # MLE
   model <-
-    speedglm(y ~ . - 1, data = data_in, family = binomial(link = link), control = glm.control(epsilon = 1e-10) )
+    speedglm(y ~ . - 1, data = data_in, family = binomial(link = link), control = glm.control(epsilon = 1e-8) )
   fit = summary(model)
   Hessian_inv = vcov(model)
   cof = unlist(coef(model))
@@ -917,7 +917,7 @@ analytical_corrected = function(y, X, N, index, data, link = 'probit', L = 1, be
   }
 
   model_j_2 <-
-    glm(formula = formula, data = data_2, family=binomial(link = link), control = glm.control(epsilon = 1e-8, maxit = 1000) )
+    glm(formula = formula, data = data_2, family=binomial(link = link), control = glm.control(epsilon = 1e-8, maxit = 200) )
   fit_j_2 = summary(model_j_2)
   estimate_analytical_another = c(estimate_analytical_another, unlist(coef(model_j_2)))
   estimate_analytical_another[K+1] = sum(estimate_analytical_another[(N+K+1):(N+N+K)]) - sum(estimate_analytical_another[(K+2):(N+K)])
