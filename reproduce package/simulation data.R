@@ -14,42 +14,62 @@ data_generation = function(N, beta, design = 1, model = 'probit'){
     dens_T_up = 0
     dens_T_low = -log(log(N))
   }else if( design == 3){
-    dens_N_up = 0
-    dens_N_low = -log(N)^(0.5)
-    dens_T_up = 0
-    dens_T_low = -log(N)^(0.5)
+    dens_N_up =  0
+    dens_N_low = -log(N)^(0.3)
+    dens_T_up =  0
+    dens_T_low = -log(N)^(0.3)
   }else if (design == 4){
+    dens_N_up = 0
+    dens_N_low = -log(N)^(0.4)
+    dens_T_up = 0
+    dens_T_low = -log(N)^(0.4)
+  }else if (design ==5){
+    dens_N_up = log(N)^(0.5)
+    dens_N_low = 0 # -log(N)^(0.5)
+    dens_T_up = log(N)^(0.5)
+    dens_T_low = 0 # -log(N)^(0.5)
+  }
+  else if (design ==6){
+    dens_N_up = 0
+    dens_N_low = -log(N)^(0.6)
+    dens_T_up = 0
+    dens_T_low = -log(N)^(0.6)
+  }
+  else if (design == 7){
+    dens_N_up = 0
+    dens_N_low = -log(N)^(0.7)
+    dens_T_up = 0
+    dens_T_low = -log(N)^(0.7)
+  }
+  else if (design == 8){
     dens_N_up = 0
     dens_N_low = -log(N)
     dens_T_up = 0
     dens_T_low = -log(N)
-  }else if (design ==5){
-    dens_N_up = 0
-    dens_N_low = -log(N)^(1.2)
-    dens_T_up = 0
-    dens_T_low = -log(N)^(1.2)
-  }
-  else if (design ==6){
-    dens_N_up = 0
-    dens_N_low = -log(N)^(1.3)
-    dens_T_up = 0
-    dens_T_low = -log(N)^(1.3)
-  }
-  else if (design ==7){
-    dens_N_up = 0
-    dens_N_low = -log(N)^(1.5)
-    dens_T_up = 0
-    dens_T_low = -log(N)^(1.5)
   }
   for (i in seq(N)){
-    alpha[i] = dens_N_low + ((i - 1) / ( N - 1)) * (dens_N_up - dens_N_low)
+    alpha[i] =  dens_N_low + ((i - 1) / ( N - 1)) * (dens_N_up - dens_N_low)
   }
   for (i in seq(N)){
+
     gamma[i] =  dens_T_low + ((i - 1) / ( N - 1)) * (dens_T_up - dens_T_low)
+
   }
+
   Z = array(0, dim = c(N, N, K))
   Y = matrix(0, nrow = N, ncol = N)
   eta = matrix(0, nrow = N, ncol = N)
+
+  Sigma <- matrix(0, nrow=N, ncol=N)
+  for (i in 1:N) {
+    for (j in 1:N) {
+      Sigma[i,j] <- 0.6^abs(i-j)
+    }
+  }
+  errors <- matrix(NA, nrow=N, ncol=N)
+  for (t in 1:N) {
+    errors[, t] <- mvrnorm(1, mu=rep(0, N), Sigma=Sigma)
+  }
   for (t in seq(N)) {
     for (i in seq(N)) {
       if (model == 'probit'){
@@ -60,16 +80,17 @@ data_generation = function(N, beta, design = 1, model = 'probit'){
       for (k in seq(K)){
         if (k == 1){
           if ( t %% 2 == 0 & i %% 2 == 0){
-            Z[i, t, k] = (1 - 2 * 1*(0)) * (1 - 2 * 1*(0))
+            Z[i, t, k] = 1 # (1 - 2 * 1*(0)) * (1 - 2 * 1*(0)) # + errors[i,t]^2 - errors[i, t]^3
           } else if(t %% 2 == 0 & i %% 2 == 1){
-            Z[i, t, k] = (1 - 2 * 1*(1)) * (1 - 2 * 1*(0))
+            Z[i, t, k] = 0 # (1 - 2 * 1*(1)) * (1 - 2 * 1*(0)) # - errors[i,t]^2 + errors[i, t]^3
           } else if(t %% 2 == 1 & i %% 2 == 0){
-            Z[i, t, k] = (1 - 2 * 1*(0)) * (1 - 2 * 1*(1))
+            Z[i, t, k] = 0 # (1 - 2 * 1*(0)) * (1 - 2 * 1*(1)) # + errors[i,t]^2 - errors[i, t]^3
           } else{
-            Z[i, t, k] = (1 - 2 * 1*(1)) * (1 - 2 * 1*(1))
+            Z[i, t, k] = 1 # (1 - 2 * 1*(1)) * (1 - 2 * 1*(1)) # - errors[i,t]^2 + errors[i, t]^3
           }
+          #Z[i, t, k] = errors[i,t]
         }else{
-          Z[i, t, k] =  rnorm(1, 0, 1)
+          Z[i, t, k] =  errors[i,t]
         }
       }
       Y[i, t] = (beta %*% Z[i, t, ]  + alpha[i] + gamma[t] > epsi_it)
@@ -170,6 +191,7 @@ data_generation = function(N, beta, design = 1, model = 'probit'){
           } else{
             Z[i, t, k] = (1 - 2 * 1*(1)) * (1 - 2 * 1*(1))
           }
+
         }else{
           Z[i, t, k] = rnorm(1, 0, 1)
         }
@@ -180,10 +202,10 @@ data_generation = function(N, beta, design = 1, model = 'probit'){
         Y[i, t] = (beta[1:(K-1)] %*% Z[i, t, ]  + alpha[i] + gamma[t] > epsi_it)
       }
       if (i > 1){
-      eta[i, t] = (beta[1:(K-1)] %*% Z[i, t, ] +  beta[K] * Y[i-1, t]   + alpha[i] + gamma[t])
-    }else{
-      eta[i, t] = (beta[1:(K-1)] %*% Z[i, t, ]  + alpha[i] + gamma[t])
-    }
+        eta[i, t] = (beta[1:(K-1)] %*% Z[i, t, ] +  beta[K] * Y[i-1, t]   + alpha[i] + gamma[t])
+      }else{
+        eta[i, t] = (beta[1:(K-1)] %*% Z[i, t, ]  + alpha[i] + gamma[t])
+      }
     }
   }
 
@@ -194,7 +216,7 @@ data_generation = function(N, beta, design = 1, model = 'probit'){
   for (t in seq(N)) {
     for (i in seq(N)) {
       if( i > 1){
-      X_in[i + (t - 1) * N,] = c(Z[i,t,], Y[i-1, t])
+        X_in[i + (t - 1) * N,] = c(Z[i,t,], Y[i-1, t])
       }else{
         X_in[i + (t - 1) * N,] = c(Z[i,t,], 0)
       }
